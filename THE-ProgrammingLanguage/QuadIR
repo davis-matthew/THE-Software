@@ -1,0 +1,9 @@
+Assignment / Copy
+    x = y op z
+    x = y
+    x = "hello"
+    arr[x] = y op z
+Branch
+    br cond labelTrue labelFalse
+Print
+    print s

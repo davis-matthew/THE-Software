@@ -3,8 +3,9 @@ We aim to implement a fused lexer/parser solution for general context-free langu
 
 ## Components: 
 - Tools:
-    - Grammar Converter: a tool to convert over antlr4 grammars to a DGNF form.
-    - Grammar Tester: a tool to visualize how the grammar matches a text
+    - Grammar Parser: a tool which generates a parse tree out of a text and a grammar
+    - Grammar Converter: a tool to convert over antlr4 grammars to a DGNF form
+    - Grammar Visualizer: a tool to visualize how the grammar matches a text
 - Parser: the actual parser of the grammar
 - Tokenizer Interface: an interface of what to do with the parsed tokens
 ## Referencing:
