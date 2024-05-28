@@ -1,0 +1,171 @@
+
+int val = 1
+if val = 2
+	print("ASDF")
+]
+
+/*
+print(3 + newMethod())
+
+Int newMethod()
+	print("Hello world!")
+]
+*/
+
+/*
+int[] arr = int[5]
+for int i in arr
+	print(i)
+]
+*/
+
+/*
+string[] arr = string[20]
+int i = 0
+for string s in arr
+	print(s + " " + i)
+	i++
+]
+//*/
+
+/*
+// (Recursive version)
+void main(string[] args)
+	int[] arr = {2, 3, 4, 10, 40}
+	int n = #arr
+	int x = 10
+	int result = binarySearch(arr, 0, n - 1, x)
+	if result == -1
+		print("Not found")
+	else
+		print("Found at " + result)
+	]
+]
+
+int binarySearch(int[] arr, int lower, int upper, int x)
+	if upper >= lower
+		int mid = lower + (upper - lower) / 2
+		
+		if arr[mid] > x
+			return binarySearch(arr, lower, mid - 1, x)
+		elseif arr[mid] < x
+			return binarySearch(arr, mid + 1, upper, x)
+		else arr[mid] == x
+			return mid
+		]
+	]
+	
+	return -1
+]
+
+// (iterative version)
+void main(string[] args)
+	int arr[] = {2, 3, 4, 10, 40}
+	int x = 10
+	int result = binarySearch(arr, x)
+	if result == -1
+		print("Element not present")
+	else
+		print("Element found at index " + result)
+	]
+]
+
+int binarySearch(int[] arr, int x)
+	int l = 0
+	int r = #arr - 1
+	while l <= r
+		int m = l + (r - l) / 2
+		
+		if arr[m] == x
+			return m
+		]
+		
+		if arr[m] < x
+			l = m + 1
+		else
+			r = m - 1
+		]
+	]
+	
+	return -1
+]
+*/
+
+/* Optimization examples and goodness examples
+int[] arr = int[10]
+Arrays.sort(arr)
+arr = Arrays.split(arr, 0, #arr/2)
+
+if int[].parse("1 2 3 4 5", " ") = {1}
+	
+]
+
+if obj1 @= obj2
+	// This is a pointer equal
+]
+
+if int1 @= int2
+	// Pointer equals
+]
+*/
+
+/*
+string[] arr = string[20]
+[
+	int stopIndex = #arr
+	string loopVar
+	int i = 0
+	loop
+		if i >= stopIndex
+			break
+		]
+		loopVar = arr[i]
+		
+		// Code here
+		
+		i = i + 1
+	]
+]
+
+
+
+const int start = blah()
+const int end = blarg()
+const int step = thing()
+
+if step >= 0
+	loop
+		if i >= stop
+			break
+		]
+		
+		// Code here
+		
+		i = i + step
+	]
+else
+	loop
+		if i < stop
+			break
+		]
+		
+		// Code here
+		
+		i = i + step
+	]
+]
+
+
+for int i = 100, 0, -1
+	print(i)
+]
+
+for int i=0, 100
+	arr[i]
+]
+
+string[,] arr = string[20,40]
+for string x in arr
+	print(x)
+]
+*/
