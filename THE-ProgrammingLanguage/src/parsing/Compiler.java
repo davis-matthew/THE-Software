@@ -105,6 +105,13 @@ public class Compiler {
 			print(instructions.get(i));
 		}
 		
+		print("\nQuad instructions:");
+		ArrayList<QuadInstruction> quadInstructions = convertToQuadInstructions();
+		for (int i = 0; i < quadInstructions.size(); i++) {
+			print(quadInstructions.get(i));
+		}
+		print("");
+		
 		//saveFile(fileToWrite, text);
 	}
 	
@@ -1611,7 +1618,7 @@ public class Compiler {
 			// Handle overloaded binary operators depending on operand type
 			if (type == InstructionType.Add) {
 				// This must be a string concatenation
-				if (operandType1 == Type.String) {
+				if (operandType1 == Type.String || operandType2 == Type.String) {
 					type = InstructionType.Concat;
 				}
 			}
@@ -2848,6 +2855,15 @@ public class Compiler {
 			return null;
 		}
 		return parent;
+	}
+	
+	// Convert all the instructions into QuadInstructions
+	static ArrayList<QuadInstruction> convertToQuadInstructions() {
+		ArrayList<QuadInstruction> quadInstructions = new ArrayList<QuadInstruction>();
+		for (int i = 0; i < instructions.size(); i++) {
+			quadInstructions.add(instructions.get(i).toQuadIR());
+		}
+		return quadInstructions;
 	}
 	
 	// Load some text from a file

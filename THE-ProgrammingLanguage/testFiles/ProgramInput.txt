@@ -1,8 +1,35 @@
 
+[
+	int a = 0
+	print(a)
+]
+int a = 0
+print(a)
+
+/*
 int val = 1
 if val = 2
 	print("ASDF")
+elseif val = 3
+	print("aaaa")
+elseif val = 4
+	print("bbbb")
+else
+	print("cccc")
 ]
+//*/
+
+/*
+do
+	print("asdf")
+] while true
+//*/
+
+/*
+while true
+	print("Hi")
+]
+*/
 
 /*
 print(3 + newMethod())

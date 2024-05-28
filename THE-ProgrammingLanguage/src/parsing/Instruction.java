@@ -193,6 +193,10 @@ public class Instruction {
 				// instructionType == InstructionType.Switch;
 	}
 	
+	public QuadInstruction toQuadIR() {
+		// TODO
+	}
+	
 	// Beautiful representation of this instruction
 	public String toString() {
 		String s = id + " ";
