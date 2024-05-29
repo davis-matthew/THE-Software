@@ -36,6 +36,46 @@ public class Parser {
 			"string",
 			"void"
 		};
+
+	// Remove all comments from every line
+	public static String[] stripComments(String[] lines) {
+		
+		boolean isInComment = false;
+		for (int i = 0; i < lines.length; i++) {
+			
+			if (!isInComment) {
+				
+				// Remove single line comments
+				int singleLineCommentIndex = lines[i].indexOf("//");
+				if (singleLineCommentIndex != -1) {
+					lines[i] = lines[i].substring(0, singleLineCommentIndex);
+				}
+				
+				// Find a multiline comment
+				int multilineCommentStartIndex = lines[i].indexOf("/*");
+				if (multilineCommentStartIndex != -1) {
+					lines[i] = lines[i].substring(0, multilineCommentStartIndex);
+					isInComment = true;
+				}
+			} else {
+				int multilineCommentEndIndex = lines[i].indexOf("*/");
+				if (multilineCommentEndIndex != -1) {
+					lines[i] = lines[i].substring(multilineCommentEndIndex + 2);
+					isInComment = false;
+				}
+			}
+			
+			// Skip lines in a comment
+			if (isInComment) {
+				lines[i] = "";
+			} else {
+				// Prepare this string for evaluation
+				lines[i] = Parser.prepareStringForEvaluation(lines[i]);
+			}
+		}
+		
+		return lines;
+	}
 	
 	// Prepare the string for faster parsing later
 	public static String prepareStringForEvaluation(String s) {
@@ -314,8 +354,8 @@ public class Parser {
 		return false;
 	}
 	
-	// Return true if this line is a method call on its own
-	static boolean isMethodCall(String line) {
+	// Return true if this line is a function call on its own
+	static boolean isFunctionCall(String line) {
 		char[] chars = line.toCharArray();
 		
 		Object[] data = getVariableName(line, 0);
@@ -338,13 +378,13 @@ public class Parser {
 		return false;
 	}
 	
-	// Return the name of this method and the argument string that goes with it
-	static String[] getMethodNameAndArgs(String line) {
+	// Return the name of this function and the argument string that goes with it
+	static String[] getFunctionNameAndArgs(String line) {
 		// Find the first opening parenthesis
 		
 		int parenthesisIndex = line.indexOf('(');
 		if (parenthesisIndex == -1) {
-			printError("Arguments missing in method call");
+			printError("Arguments missing in function call");
 			return null;
 		}
 		

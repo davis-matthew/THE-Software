@@ -1,22 +1,22 @@
 package parsing;
 
-// This class stores information about a program routine or method
+// This class stores information about a program function
 
-public class Routine {
-	public String name; // User-given name of this routine
+public class Function {
+	public String name; // User-given name of this function
 	public Type[] returnTypes;
 	public Type[] argTypes;
 	
-	// Create a new routine of a certain name and type
-	public Routine(String name, Type[] returnTypes, Type[] argTypes) {
+	// Create a new function of a certain name and type
+	public Function(String name, Type[] returnTypes, Type[] argTypes) {
 		this.name = name;
 		this.returnTypes = returnTypes;
 		this.argTypes = argTypes;
 	}
 	
-	// Return true if this routine is distinguishable from the given
+	// Return true if this function is distinguishable from the given
 	//   routing by name, or by overloaded arguments.
-	public boolean isDistinguisable(Routine other) {
+	public boolean isDistinguisable(Function other) {
 		if (!this.name.equals(other.name)) {
 			return true;
 		}

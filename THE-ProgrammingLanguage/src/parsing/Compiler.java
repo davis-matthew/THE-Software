@@ -35,44 +35,10 @@ public class Compiler {
 		String text = loadFile(fileToRead);
 		lines = Parser.breakIntoLines(text);
 		lines = Parser.removeWhiteSpace(lines);
-		
-		// Remove comments
-		boolean isInComment = false;
-		for (int i = 0; i < lines.length; i++) {
-			
-			if (!isInComment) {
-				
-				// Remove single line comments
-				int singleLineCommentIndex = lines[i].indexOf("//");
-				if (singleLineCommentIndex != -1) {
-					lines[i] = lines[i].substring(0, singleLineCommentIndex);
-				}
-				
-				// Find a multiline comment
-				int multilineCommentStartIndex = lines[i].indexOf("/*");
-				if (multilineCommentStartIndex != -1) {
-					lines[i] = lines[i].substring(0, multilineCommentStartIndex);
-					isInComment = true;
-				}
-			} else {
-				int multilineCommentEndIndex = lines[i].indexOf("*/");
-				if (multilineCommentEndIndex != -1) {
-					lines[i] = lines[i].substring(multilineCommentEndIndex + 2);
-					isInComment = false;
-				}
-			}
-			
-			// Skip lines in a comment
-			if (isInComment) {
-				lines[i] = "";
-			} else {
-				// Prepare this string for evaluation
-				lines[i] = Parser.prepareStringForEvaluation(lines[i]);
-			}
-		}
+		lines = Parser.stripComments(lines);
 		
 		// Estimate the number of instructions in this program
-		instructions = new ArrayList<Instruction>(lines.length*5 + 10);
+		instructions = new ArrayList<Instruction>(lines.length * 2 + 10);
 		
 		currentParsingLineNumber = 0;
 		
@@ -88,14 +54,14 @@ public class Compiler {
 		}
 		
 		// Check the contents of the main routine for code between sub-routines
-		boolean foundCodeAfterRoutine = searchForCodeAfterRoutine(null);
+		boolean foundCodeAfterRoutine = searchForCodeAfterFunction(null);
 		if (foundCodeAfterRoutine) {
-			printError("Method may not be followed by sequential code");
+			printError("Function may not be followed by sequential code");
 			return;
 		}
 		
-		// Find which method each method call was referencing
-		hadError = findMethodCallReferences();
+		// Find which function each function call was referencing
+		hadError = findFunctionCallReferences();
 		if (hadError) {
 			return;
 		}
@@ -251,7 +217,7 @@ public class Compiler {
 			instructions.add(enscopeInstr);
 			
 			// Get the contents of the for-loop header
-			int conditionsStartIndex = 3;
+			final int conditionsStartIndex = 3;
 			String expressionContent = line.substring(conditionsStartIndex);
 			String[] args = Parser.separateArguments(expressionContent);
 			if (args == null) {
@@ -323,6 +289,7 @@ public class Compiler {
 				zeroInstr.parentInstruction = enscopeInstr;
 				instructions.add(zeroInstr);
 				
+				// TODO startBound and stopBound need to be moved inside the loop and computed on each iteration
 				startBound = new Instruction(InstructionType.AllocAndAssign);
 				startBound.stringRepresentation = zeroInstr.stringRepresentation;
 				startBound.createArgs(1);
@@ -365,7 +332,8 @@ public class Compiler {
 				}
 				
 				instructions.add(readProperty);
-				
+
+				// TODO startBound and stopBound need to be moved inside the loop and computed on each iteration
 				// Create the stop bound
 				stopBound = new Instruction(InstructionType.Length);
 				stopBound.stringRepresentation = "#(" + arrayVar.name + ")";
@@ -497,83 +465,130 @@ public class Compiler {
 				printError("Too many arguments in For-loop header");
 				return true;
 			}
-
-			// Create the condition for forward or backward counting
-			Instruction zeroInstr = new Instruction(InstructionType.Given);
-			zeroInstr.stringRepresentation = "0";
-			zeroInstr.primitiveGivenValue = 0;
-			zeroInstr.returnType = Type.Int;
-			zeroInstr.parentInstruction = enscopeInstr;
-			instructions.add(zeroInstr);
-			
-			Instruction signCondition = new Instruction(InstructionType.GreaterEqual);
-			signCondition.stringRepresentation = stepValInstr.stringRepresentation + " >= 0";
-			signCondition.createArgs(2);
-			signCondition.argReferences[0] = stepValInstr;
-			signCondition.argReferences[1] = zeroInstr;
-			signCondition.addTopologicalReference(stepValInstr);
-			signCondition.addTopologicalReference(zeroInstr);
-			signCondition.parentInstruction = enscopeInstr;
-			signCondition.returnType = getReturnTypeFromInstructionAndOperands(
-					signCondition.instructionType, stepValInstr.returnType, zeroInstr.returnType);
-			instructions.add(signCondition);
-			
-			Instruction ifSignInstr = new Instruction(InstructionType.If);
-			ifSignInstr.stringRepresentation = signCondition.stringRepresentation;
-			ifSignInstr.createArgs(1);
-			ifSignInstr.argReferences[0] = signCondition;
-			ifSignInstr.addTopologicalReference(signCondition);
-			ifSignInstr.returnType = Type.Void; // Doesn't return anything
-			ifSignInstr.parentInstruction = enscopeInstr;
-			instructions.add(ifSignInstr);
 			
 			// Generate the contents of the for-loop with the given condition
-			final int initialInstructionIndex = currentParsingLineNumber;
-			boolean hadError = addForLoopContents(ifSignInstr, stopBound, stepValInstr,
-							line, loopCounterVar, forEachVar, arrayVar,
-							InstructionType.GreaterEqual);
+			// This instruction precedes all content of the loop that is repeated
+			Instruction loopStartLabel = new Instruction(InstructionType.Loop);
+			loopStartLabel.stringRepresentation = "for loop start";
+			loopStartLabel.returnType = Type.Void; // Doesn't return anything
+			loopStartLabel.parentInstruction = enscopeInstr;
+			instructions.add(loopStartLabel);
+			
+			// Create the upper bound break condition
+			{
+				Instruction readLoopCount = new Instruction(InstructionType.Read);
+				readLoopCount.stringRepresentation = loopCounterVar.name;
+				readLoopCount.variableThatWasRead = loopCounterVar;
+				readLoopCount.returnType = loopCounterVar.type;
+				readLoopCount.parentInstruction = loopStartLabel;
+				instructions.add(readLoopCount);
+				
+				InstructionType stopCondition = InstructionType.GreaterEqual; // TODO this is wrong!
+				Instruction breakBoundCondition = new Instruction(stopCondition);
+				breakBoundCondition.stringRepresentation = readLoopCount.stringRepresentation +
+						" " + stopCondition.toSymbolForm() + " " + stopBound.stringRepresentation;
+				breakBoundCondition.createArgs(2);
+				breakBoundCondition.argReferences[0] = readLoopCount;
+				breakBoundCondition.addTopologicalReference(readLoopCount);
+				breakBoundCondition.argReferences[1] = stopBound;
+				breakBoundCondition.addTopologicalReference(stopBound);
+				breakBoundCondition.returnType = Type.Bool;
+				breakBoundCondition.parentInstruction = loopStartLabel;
+				instructions.add(breakBoundCondition);
+				
+				Instruction ifBoundBreakCondition = new Instruction(InstructionType.If);
+				ifBoundBreakCondition.stringRepresentation = breakBoundCondition.stringRepresentation;
+				ifBoundBreakCondition.createArgs(1);
+				ifBoundBreakCondition.argReferences[0] = breakBoundCondition;
+				ifBoundBreakCondition.addTopologicalReference(breakBoundCondition);
+				ifBoundBreakCondition.returnType = Type.Void; // Doesn't return anything
+				ifBoundBreakCondition.parentInstruction = loopStartLabel;
+				instructions.add(ifBoundBreakCondition);
+				
+				Instruction boundBreak = new Instruction(InstructionType.Break);
+				boundBreak.stringRepresentation = "break for";
+				boundBreak.returnType = Type.Void; // Doesn't return anything
+				boundBreak.createArgs(1);
+				boundBreak.argReferences[0] = loopStartLabel;
+				boundBreak.addTopologicalReference(loopStartLabel);
+				boundBreak.parentInstruction = ifBoundBreakCondition;
+				instructions.add(boundBreak);
+				
+				Instruction ifBoundEnd = new Instruction(InstructionType.EndBlock);
+				ifBoundEnd.stringRepresentation = "end if";
+				ifBoundEnd.returnType = Type.Void;
+				ifBoundEnd.parentInstruction = ifBoundBreakCondition;
+				instructions.add(ifBoundEnd);
+				
+				ifBoundBreakCondition.endInstruction = ifBoundEnd;
+			}
+			
+			// Create the loop variable read operation (it may be used many times)
+			Instruction countReadInstr = new Instruction(InstructionType.Read);
+			countReadInstr.stringRepresentation = loopCounterVar.name;
+			countReadInstr.variableThatWasRead = loopCounterVar;
+			countReadInstr.returnType = loopCounterVar.type;
+			countReadInstr.parentInstruction = loopStartLabel;
+			instructions.add(countReadInstr);
+			
+			// Reassign the for-each loop reference variable
+			if (forEachVar != null) {
+				Instruction arrayReadInstr = new Instruction(InstructionType.Read);
+				arrayReadInstr.stringRepresentation = arrayVar.name + "[" + loopCounterVar.name + "]";
+				arrayReadInstr.variableThatWasRead = arrayVar;
+				arrayReadInstr.createArgs(1);
+				arrayReadInstr.argReferences[0] = countReadInstr;
+				arrayReadInstr.addTopologicalReference(countReadInstr);
+				arrayReadInstr.returnType = arrayVar.type.toArrayPrimitiveType();
+				arrayReadInstr.parentInstruction = loopStartLabel;
+				
+				// Find the all previous instructions that possibly assigned this variable, and reference them
+				boolean foundLastWriteInstruction = addReferenceToInstructionsThatAssigned(arrayReadInstr, arrayVar);
+				if (!foundLastWriteInstruction) {
+					printError("Array '" + arrayVar + "' was never initialized");
+					return true;
+				}
+				
+				instructions.add(arrayReadInstr);
+				
+				// Reassign the variable
+				Instruction reassignForEachVar = new Instruction(InstructionType.Reassign);
+				reassignForEachVar.stringRepresentation = forEachVar.name + " = " + arrayReadInstr.stringRepresentation;
+				reassignForEachVar.returnType = Type.Void; // Doesn't return anything
+				reassignForEachVar.variableThatWasChanged = forEachVar;
+				reassignForEachVar.parentInstruction = loopStartLabel;
+				reassignForEachVar.createArgs(1);
+				reassignForEachVar.argReferences[0] = arrayReadInstr;
+				reassignForEachVar.addTopologicalReference(arrayReadInstr);
+				instructions.add(reassignForEachVar);
+			}
+			
+			// Get the instructions contained by this for-loop
+			currentParsingLineNumber++;
+			boolean hadError = parseLinesAtLevel(loopStartLabel);
 			if (hadError) {
 				return true;
 			}
 			
-			// Create the EndBlock to end of the previous chained instruction
-			Instruction ifSignEndInstr = new Instruction(InstructionType.EndBlock);
-			ifSignEndInstr.stringRepresentation = "end if";
-			ifSignEndInstr.returnType = Type.Void;
-			ifSignEndInstr.parentInstruction = ifSignInstr;
-			instructions.add(ifSignEndInstr);
-			
-			// Mark the end of the previous chaining instruction (the sign If)
-			ifSignInstr.endInstruction = ifSignEndInstr;
-			
-			// Create the Else block for the sign switch
-			Instruction elseSignInstr = new Instruction(InstructionType.Else);
-			elseSignInstr.stringRepresentation = "else";
-			elseSignInstr.returnType = Type.Void;
-			elseSignInstr.parentInstruction = enscopeInstr;
-			instructions.add(elseSignInstr);
-			
-			// Mark the next instruction in the chain from the previous
-			ifSignInstr.nextChainedInstruction = elseSignInstr;
-			
-			// Generate the contents of the for-loop again with a different stop-condition
-			currentParsingLineNumber = initialInstructionIndex;
-			boolean hadError2 = addForLoopContents(ifSignInstr, stopBound, stepValInstr,
-							line, loopCounterVar, forEachVar, arrayVar,
-							InstructionType.Less);
-			if (hadError2) {
+			hadError = generateBinaryReassignment(loopCounterVar, InstructionType.Add,
+					stepValInstr, loopStartLabel, countReadInstr);
+			if (hadError) {
 				return true;
 			}
 			
-			// Create the EndBlock to end this else-statement
-			Instruction elseSignEnd = new Instruction(InstructionType.EndBlock);
-			elseSignEnd.stringRepresentation = "end else";
-			elseSignEnd.returnType = Type.Void;
-			elseSignEnd.parentInstruction = elseSignInstr;
-			instructions.add(elseSignEnd);
+			// Create the end of the for-loop
+			Instruction endInstr = new Instruction(InstructionType.EndBlock);
+			endInstr.stringRepresentation = "end for";
+			endInstr.returnType = Type.Void; // Doesn't return anything
+			endInstr.parentInstruction = loopStartLabel;
+			instructions.add(endInstr);
 			
-			// Mark this as the end instruction for the else-block
-			elseSignInstr.endInstruction = elseSignEnd;
+			// Mark this as the end of the Loop instruction
+			loopStartLabel.endInstruction = endInstr;
+			
+			// Reference the loop counter increment instruction from the Loop instruction
+			loopStartLabel.createArgs(1);
+			loopStartLabel.argReferences[0] = countReadInstr;
 			
 			// Create the end of the for-loop scope enclosure
 			Instruction descopeInstr = new Instruction(InstructionType.EndBlock);
@@ -1139,22 +1154,22 @@ public class Compiler {
 			String varName = (String)varData[0];
 			int varEndIndex = (int)varData[1];
 			
-			// Determine whether this is a variable, or method declaration
-			boolean isMethodDeclaration = false;
+			// Determine whether this is a variable, or function declaration
+			boolean isFunctionDeclaration = false;
 			if (varType == Type.Void || (varEndIndex < line.length() && line.charAt(varEndIndex) == '(')) {
-				isMethodDeclaration = true;
+				isFunctionDeclaration = true;
 			}
 			
-			if (isMethodDeclaration) {
+			if (isFunctionDeclaration) {
 				
-				// Cannot define a method inside anything except another method or main program
+				// Cannot define a function inside anything except another function or main program
 				if (parentInstruction != null &&
-						parentInstruction.instructionType != InstructionType.RoutineDefinition) {
-					printError("Methods may only be defined inside other methods or main program");
+						parentInstruction.instructionType != InstructionType.FunctionDefinition) {
+					printError("Functions may only be defined inside other functions or main program");
 					return true;
 				}
 				
-				// Parse the types of the parameters to this method
+				// Parse the types of the parameters to this function
 				String paramString = Parser.getFunctionArguments(line, typeEndIndex);
 				String[] params = Parser.separateArguments(paramString);
 				if (params == null) {
@@ -1177,17 +1192,17 @@ public class Compiler {
 				
 				boolean foundDuplicates = Parser.checkForDuplicates(paramNames);
 				if (foundDuplicates) {
-					printError("Duplicate parameter name in method header");
+					printError("Duplicate parameter name in function header");
 					return true;
 				}
 				
 				// Create the routine signature
-				Routine routine = new Routine(varName, new Type[]{varType}, paramTypes);
+				Function routine = new Function(varName, new Type[]{varType}, paramTypes);
 				
 				// Try to find an existing variable in this scope that is in naming conflict with this one
-				boolean foundConflict = findConflictingRoutine(parentInstruction, routine);
+				boolean foundConflict = findConflictingFunction(parentInstruction, routine);
 				if (foundConflict) {
-					printError("Method '" + varName + "' has already been declared in this scope");
+					printError("Function '" + varName + "' has already been declared in this scope");
 					return true;
 				}
 				
@@ -1200,9 +1215,9 @@ public class Compiler {
 				}
 				
 				// Create the routine definition
-				Instruction routineInstr = new Instruction(InstructionType.RoutineDefinition);
+				Instruction routineInstr = new Instruction(InstructionType.FunctionDefinition);
 				routineInstr.stringRepresentation = varName + "(" + argTypesString + ")";
-				routineInstr.routineThatWasDefined = routine;
+				routineInstr.functionThatWasDefined = routine;
 				routineInstr.routineName = varName;
 				routineInstr.parentInstruction = parentInstruction;
 				routineInstr.returnType = varType; // TODO add multiple returns
@@ -1232,9 +1247,9 @@ public class Compiler {
 				}
 				
 				// Check the contents of this routine for code between sub-routines
-				boolean foundCodeAfterRoutine = searchForCodeAfterRoutine(routineInstr);
+				boolean foundCodeAfterRoutine = searchForCodeAfterFunction(routineInstr);
 				if (foundCodeAfterRoutine) {
-					printError("Method may not be followed by sequential code");
+					printError("Function may not be followed by sequential code");
 					return true;
 				}
 				
@@ -1492,9 +1507,9 @@ public class Compiler {
 				printError("Invalid assignment operator");
 				return true;
 			}
-		} else if (Parser.isMethodCall(line)) { // If this is a method call alone on a line
+		} else if (Parser.isFunctionCall(line)) { // If this is a function call alone on a line
 			
-			String[] data = Parser.getMethodNameAndArgs(line);
+			String[] data = Parser.getFunctionNameAndArgs(line);
 			String methodName = null;
 			String methodArgString = null;
 			if (data != null) {
@@ -1538,13 +1553,13 @@ public class Compiler {
 				}
 				
 				instructions.add(instr);
-			} else { // This must be a user-defined method
+			} else { // This must be a user-defined function
 				Instruction instr = new Instruction(InstructionType.Call);
 				instr.stringRepresentation = line;
 				instr.routineName = methodName;
 				instr.createArgs(args.length);
 				
-				// Parse each of the arguments to this method
+				// Parse each of the arguments to this function
 				for (int i = 0; i < args.length; i++) {
 					// Recursively parse the expressions
 					boolean hadError = parseExpression(parentInstruction, args[i]);
@@ -1573,8 +1588,8 @@ public class Compiler {
 	static boolean parseExpression(Instruction parentInstruction, String text) {
 		text = Parser.removeUnnecessaryParentheses(text.trim());
 		
-		// TODO test method scope rules
-		// TODO parse methods inside expressions
+		// TODO test function scope rules
+		// TODO parse functions inside expressions
 		// TODO add a read keyboard function
 		
 		if (text.isEmpty()) {
@@ -1863,24 +1878,10 @@ public class Compiler {
 						
 						instructions.add(instr);
 					} else {
-						// Reading a composite type directly doesn't make sense.
-						// So instead, we are reading a property of the composite type.
 						
-						Instruction instr = new Instruction(InstructionType.ReadProperty);
-						instr.stringRepresentation = text;
-						instr.variableThatWasRead = var;
-						instr.returnType = var.type;
-						instr.parentInstruction = parentInstruction;
-						
-						// TODO add references to instruction that assigned this variable's properties too.
-						// Find the all previous instructions that assigned this variable, and reference them
-						boolean foundLastWriteInstruction = addReferenceToInstructionsThatAssigned(instr, var);
-						if (!foundLastWriteInstruction) {
-							printError("Variable '" + var + "' was never initialized");
-							return true;
-						}
-						
-						instructions.add(instr);
+						// Reading a composite type (like an array or struct) directly doesn't make sense.
+						printError("Composite types (like '" + var + "') in expressions are not implemented yet");
+						return true;
 					}
 				}
 			}
@@ -1971,138 +1972,6 @@ public class Compiler {
 		instructions.add(reassignInstr);
 		
 		// No errors
-		return false;
-	}
-	
-	// Generate the instructions for a generic for-loop.
-	// Return true if there was an error.
-	static boolean addForLoopContents(Instruction parentInstruction, Instruction stopBound,
-				Instruction stepValInstr, String line, Variable loopCounterVar,
-				Variable forEachVar, Variable arrayVar, InstructionType stopCondition) {
-		
-		// This instruction precedes all content of the loop that is repeated
-		Instruction loopStartLabel = new Instruction(InstructionType.Loop);
-		loopStartLabel.stringRepresentation = "for loop start";
-		loopStartLabel.returnType = Type.Void; // Doesn't return anything
-		loopStartLabel.parentInstruction = parentInstruction;
-		instructions.add(loopStartLabel);
-		
-		// Create the upper bound break condition
-		{
-			Instruction readLoopCount = new Instruction(InstructionType.Read);
-			readLoopCount.stringRepresentation = loopCounterVar.name;
-			readLoopCount.variableThatWasRead = loopCounterVar;
-			readLoopCount.returnType = loopCounterVar.type;
-			readLoopCount.parentInstruction = loopStartLabel;
-			instructions.add(readLoopCount);
-			
-			Instruction breakBoundCondition = new Instruction(stopCondition);
-			breakBoundCondition.stringRepresentation = readLoopCount.stringRepresentation +
-					" " + stopCondition.toSymbolForm() + " " + stopBound.stringRepresentation;
-			breakBoundCondition.createArgs(2);
-			breakBoundCondition.argReferences[0] = readLoopCount;
-			breakBoundCondition.addTopologicalReference(readLoopCount);
-			breakBoundCondition.argReferences[1] = stopBound;
-			breakBoundCondition.addTopologicalReference(stopBound);
-			breakBoundCondition.returnType = getReturnTypeFromInstructionAndOperands(
-					stopCondition, readLoopCount.returnType, stopBound.returnType);
-			breakBoundCondition.parentInstruction = loopStartLabel;
-			instructions.add(breakBoundCondition);
-			
-			Instruction ifBoundBreakCondition = new Instruction(InstructionType.If);
-			ifBoundBreakCondition.stringRepresentation = breakBoundCondition.stringRepresentation;
-			ifBoundBreakCondition.createArgs(1);
-			ifBoundBreakCondition.argReferences[0] = breakBoundCondition;
-			ifBoundBreakCondition.addTopologicalReference(breakBoundCondition);
-			ifBoundBreakCondition.returnType = Type.Void; // Doesn't return anything
-			ifBoundBreakCondition.parentInstruction = loopStartLabel;
-			instructions.add(ifBoundBreakCondition);
-			
-			Instruction boundBreak = new Instruction(InstructionType.Break);
-			boundBreak.stringRepresentation = "break for";
-			boundBreak.returnType = Type.Void; // Doesn't return anything
-			boundBreak.createArgs(1);
-			boundBreak.argReferences[0] = loopStartLabel;
-			boundBreak.addTopologicalReference(loopStartLabel);
-			boundBreak.parentInstruction = ifBoundBreakCondition;
-			instructions.add(boundBreak);
-			
-			Instruction ifBoundEnd = new Instruction(InstructionType.EndBlock);
-			ifBoundEnd.stringRepresentation = "end if";
-			ifBoundEnd.returnType = Type.Void;
-			ifBoundEnd.parentInstruction = ifBoundBreakCondition;
-			instructions.add(ifBoundEnd);
-			
-			ifBoundBreakCondition.endInstruction = ifBoundEnd;
-		}
-		
-		// Create the loop variable read operation (it may be used many times)
-		Instruction countReadInstr = new Instruction(InstructionType.Read);
-		countReadInstr.stringRepresentation = loopCounterVar.name;
-		countReadInstr.variableThatWasRead = loopCounterVar;
-		countReadInstr.returnType = loopCounterVar.type;
-		countReadInstr.parentInstruction = loopStartLabel;
-		instructions.add(countReadInstr);
-		
-		// Reassign the for-each loop reference variable
-		if (forEachVar != null) {
-			Instruction arrayReadInstr = new Instruction(InstructionType.Read);
-			arrayReadInstr.stringRepresentation = arrayVar.name + "[" + loopCounterVar.name + "]";
-			arrayReadInstr.variableThatWasRead = arrayVar;
-			arrayReadInstr.createArgs(1);
-			arrayReadInstr.argReferences[0] = countReadInstr;
-			arrayReadInstr.addTopologicalReference(countReadInstr);
-			arrayReadInstr.returnType = arrayVar.type.toArrayPrimitiveType();
-			arrayReadInstr.parentInstruction = loopStartLabel;
-			
-			// Find the all previous instructions that possibly assigned this variable, and reference them
-			boolean foundLastWriteInstruction = addReferenceToInstructionsThatAssigned(arrayReadInstr, arrayVar);
-			if (!foundLastWriteInstruction) {
-				printError("Array '" + arrayVar + "' was never initialized");
-				return true;
-			}
-			
-			instructions.add(arrayReadInstr);
-			
-			// Reassign the variable
-			Instruction reassignForEachVar = new Instruction(InstructionType.Reassign);
-			reassignForEachVar.stringRepresentation = forEachVar.name + " = " + arrayReadInstr.stringRepresentation;
-			reassignForEachVar.returnType = Type.Void; // Doesn't return anything
-			reassignForEachVar.variableThatWasChanged = forEachVar;
-			reassignForEachVar.parentInstruction = loopStartLabel;
-			reassignForEachVar.createArgs(1);
-			reassignForEachVar.argReferences[0] = arrayReadInstr;
-			reassignForEachVar.addTopologicalReference(arrayReadInstr);
-			instructions.add(reassignForEachVar);
-		}
-		
-		// Get the instructions contained by this for-loop
-		currentParsingLineNumber++;
-		boolean hadError = parseLinesAtLevel(loopStartLabel);
-		if (hadError) {
-			return true;
-		}
-		
-		hadError = generateBinaryReassignment(loopCounterVar, InstructionType.Add,
-				stepValInstr, loopStartLabel, countReadInstr);
-		if (hadError) {
-			return true;
-		}
-		
-		// Create the end of the for-loop
-		Instruction endInstr = new Instruction(InstructionType.EndBlock);
-		endInstr.stringRepresentation = "end for";
-		endInstr.returnType = Type.Void; // Doesn't return anything
-		endInstr.parentInstruction = loopStartLabel;
-		instructions.add(endInstr);
-		
-		// Mark this as the end of the Loop instruction
-		loopStartLabel.endInstruction = endInstr;
-		
-		// Reference the loop counter increment instruction from the Loop instruction
-		loopStartLabel.createArgs(1);
-		loopStartLabel.argReferences[0] = countReadInstr;
-		
 		return false;
 	}
 	
@@ -2359,31 +2228,31 @@ public class Compiler {
 		}
 	}
 	
-	// Determine which method declaration each method call was referencing
-	static boolean findMethodCallReferences() {
+	// Determine which function declaration each function call was referencing
+	static boolean findFunctionCallReferences() {
 		
-		// Search through each method call
+		// Search through each function call
 		for (int i = 0; i < instructions.size(); i++) {
 			Instruction instr = instructions.get(i);
 			
-			// If this is a method call
+			// If this is a function call
 			if (instr.instructionType == InstructionType.Call) {
 				
-				Instruction routineRef = findRoutineByNameAndArgs(instr);
+				Instruction functionRef = findFunctionByNameAndArgs(instr);
 				
-				if (routineRef == null) {
+				if (functionRef == null) {
 					return true;
 				}
 				
-				instr.callRoutineReference = routineRef;
+				instr.callFunctionReference = functionRef;
 			}
 		}
 		
 		return false;
 	}
 	
-	// Return true if there is any code located after a routine in the given parent
-	static boolean searchForCodeAfterRoutine(Instruction parentInstr) {
+	// Return true if there is any code located after a function in the given parent
+	static boolean searchForCodeAfterFunction(Instruction parentInstr) {
 		boolean foundCode = false;
 		
 		// Iterate backward to find the assignment of this variable
@@ -2401,16 +2270,16 @@ public class Compiler {
 				continue;
 			}
 			
-			// If this is not a routine definition, and not an End-instruction
-			if (instr.instructionType != InstructionType.RoutineDefinition &&
+			// If this is not a function definition, and not an End-instruction
+			if (instr.instructionType != InstructionType.FunctionDefinition &&
 					instr.instructionType != InstructionType.EndBlock) {
 				foundCode = true;
 				continue;
 			}
 			
-			// If this is an end block to a routine definition and we have already found
+			// If this is an end block to a function definition and we have already found
 			//    some code, then this is invalid
-			if (foundCode && instr.instructionType == InstructionType.RoutineDefinition) {
+			if (foundCode && instr.instructionType == InstructionType.FunctionDefinition) {
 				return true;
 			}
 		}
@@ -2418,18 +2287,18 @@ public class Compiler {
 		return false;
 	}
 	
-	// Return true if the given routine was previously declared in the given scope
-	static boolean findConflictingRoutine(Instruction parentInstr, Routine routine) {
+	// Return true if the given function was previously declared in the given scope
+	static boolean findConflictingFunction(Instruction parentInstr, Function function) {
 		
-		// Iterate backward to find a routine
+		// Iterate backward to find a function
 		for (int i = instructions.size()-1; i >= 0; i--) {
 			Instruction otherInstruction = instructions.get(i);
 			InstructionType type = otherInstruction.instructionType;
 			
-			if (type == InstructionType.RoutineDefinition) { // If this is a routine
+			if (type == InstructionType.FunctionDefinition) { // If this is a routine
 				
 				// If this instruction defined a routine by the same name
-				if (otherInstruction.routineThatWasDefined.name.equals(routine.name)) {
+				if (otherInstruction.functionThatWasDefined.name.equals(function.name)) {
 					
 					Instruction otherParent = otherInstruction.parentInstruction; // May be null
 					
@@ -2447,7 +2316,7 @@ public class Compiler {
 					}
 					
 					// If this instruction is a descendant of the parent of the given instruction,
-					//    then they might be in conflict due to the global scope of methods.
+					//    then they might be in conflict due to the global scope of functions.
 					nextParent = otherParent;
 					while (nextParent != parentInstr && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -2459,7 +2328,7 @@ public class Compiler {
 					// If there might be a conflict
 					if (isInConflictingScope) {
 						// If they are indistinguishable
-						if (!otherInstruction.routineThatWasDefined.isDistinguisable(routine)) {
+						if (!otherInstruction.functionThatWasDefined.isDistinguisable(function)) {
 							return true;
 						}
 					}
@@ -2470,7 +2339,7 @@ public class Compiler {
 	}
 	
 	// Return the instruction that declared the routine of the given name and argument types
-	static Instruction findRoutineByNameAndArgs(Instruction instr) {
+	static Instruction findFunctionByNameAndArgs(Instruction instr) {
 		
 		Type[] argTypes = new Type[instr.argReferences.length];
 		for (int j = 0; j < argTypes.length; j++) {
@@ -2484,7 +2353,7 @@ public class Compiler {
 		Instruction implicitMatch = null;
 		
 		// Only used for error handling
-		Routine matchingNameRoutine = null;
+		Function matchingNameRoutine = null;
 		
 		// Iterate backward to find a routine
 		outerLoop:
@@ -2492,11 +2361,11 @@ public class Compiler {
 			Instruction otherInstruction = instructions.get(i);
 			
 			// If this is a routine definition
-			if (otherInstruction.instructionType == InstructionType.RoutineDefinition) {
+			if (otherInstruction.instructionType == InstructionType.FunctionDefinition) {
 				
 				// If this instruction defined a routine by the same name
-				if (otherInstruction.routineThatWasDefined.name.equals(routineName)) {
-					matchingNameRoutine = otherInstruction.routineThatWasDefined;
+				if (otherInstruction.functionThatWasDefined.name.equals(routineName)) {
+					matchingNameRoutine = otherInstruction.functionThatWasDefined;
 					
 					Instruction otherParent = otherInstruction.parentInstruction; // May be null
 					
@@ -2514,7 +2383,7 @@ public class Compiler {
 					}
 					
 					// If this instruction is a descendant of the parent of the given instruction,
-					//    then it might be in scope due to the global scope of methods.
+					//    then it might be in scope due to the global scope of functions.
 					nextParent = otherParent;
 					while (nextParent != parentInstr && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -2526,7 +2395,7 @@ public class Compiler {
 					// If this routine is in scope
 					if (isInValidScope) {
 						// If they have matching parameters
-						Type[] otherArgTypes = otherInstruction.routineThatWasDefined.argTypes;
+						Type[] otherArgTypes = otherInstruction.functionThatWasDefined.argTypes;
 						
 						// Make sure each of the arguments can be cast to the others
 						if (otherArgTypes.length == argTypes.length) {
@@ -2577,12 +2446,12 @@ public class Compiler {
 				}
 			}
 			
-			printError("Method " + matchingNameRoutine.name + "(" + otherArgsString + ") cannot take arguments "
+			printError("Function " + matchingNameRoutine.name + "(" + otherArgsString + ") cannot take arguments "
 						+ "(" + argsString + ")");
 			return null;
 		}
 		
-		printError("Method " + routineName + "(" + argsString + ") has not been declared");
+		printError("Function " + routineName + "(" + argsString + ") has not been declared");
 		return null;
 	}
 	
@@ -2830,7 +2699,7 @@ public class Compiler {
 			}
 			
 			// This is a routine, so we can't be guaranteed that it will execute
-			if (currentParent.instructionType == InstructionType.RoutineDefinition) {
+			if (currentParent.instructionType == InstructionType.FunctionDefinition) {
 				return false;
 			}
 			
@@ -2846,7 +2715,7 @@ public class Compiler {
 	static Instruction findNearestAncestorLoop(Instruction parent) {
 		while (parent != null && parent.instructionType != InstructionType.Loop) {
 			// Loops and conditional structures may not contain a routine
-			if (parent.instructionType == InstructionType.RoutineDefinition) {
+			if (parent.instructionType == InstructionType.FunctionDefinition) {
 				break;
 			}
 			parent = parent.parentInstruction;
@@ -2861,7 +2730,10 @@ public class Compiler {
 	static ArrayList<QuadInstruction> convertToQuadInstructions() {
 		ArrayList<QuadInstruction> quadInstructions = new ArrayList<QuadInstruction>();
 		for (int i = 0; i < instructions.size(); i++) {
-			quadInstructions.add(instructions.get(i).toQuadIR());
+			QuadInstruction newQuadInstruction = instructions.get(i).toQuadIR();
+			if (newQuadInstruction != null) {
+				quadInstructions.add(newQuadInstruction);
+			}
 		}
 		return quadInstructions;
 	}

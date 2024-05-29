@@ -16,7 +16,7 @@ enum InstructionType {
 	AllocAndAssign, // Create a new variable and assign it to something
 	DeclareScope, // Sort of same as "Alloc"? Can probably be removed.
 	Length,
-	If, ElseIf, Else, EndBlock, Loop, Enscope, RoutineDefinition,
+	If, ElseIf, Else, EndBlock, Loop, Enscope, FunctionDefinition,
 	Break, Continue;
 	
 	public String toSymbolForm() {
@@ -109,13 +109,13 @@ public class Instruction {
 	public Type returnType = null;
 	
 	// The routine reference (only applicable for RoutineDefinition instructions)
-	public Routine routineThatWasDefined = null;
+	public Function functionThatWasDefined = null;
 	
 	// The name of the routine that was referenced (for Call and RoutineDefinition instruction type)
 	public String routineName = null;
 	
 	// Reference to the routine instruction that this Call instruction executes
-	public Instruction callRoutineReference = null;
+	public Instruction callFunctionReference = null;
 	
 	// The instruction that contains this instruction (such as an If, a loop, or a method).
 	// This may be null for instructions not in any conditional structure or method.
@@ -182,7 +182,7 @@ public class Instruction {
 				instructionType == InstructionType.ElseIf ||
 				instructionType == InstructionType.Enscope ||
 				instructionType == InstructionType.Loop ||
-				instructionType == InstructionType.RoutineDefinition;
+				instructionType == InstructionType.FunctionDefinition;
 	}
 	
 	// Return true if this is an If, ElseIf, Else, or Switch
@@ -194,7 +194,12 @@ public class Instruction {
 	}
 	
 	public QuadInstruction toQuadIR() {
-		// TODO
+		
+		
+		// TODO Convert to QuadIR here
+		
+		
+		return null;
 	}
 	
 	// Beautiful representation of this instruction
@@ -226,7 +231,7 @@ public class Instruction {
 			s += ")";
 		}
 		
-		if (returnType != null) {
+		if (returnType != null && returnType != Type.Void) {
 			s += "->" + returnType;
 		}
 		
@@ -252,16 +257,16 @@ public class Instruction {
 			s += "]";
 		}
 		
-		if (callRoutineReference != null) {
+		if (callFunctionReference != null) {
 			String argsString = "";
-			Type[] argTypes = callRoutineReference.routineThatWasDefined.argTypes;
+			Type[] argTypes = callFunctionReference.functionThatWasDefined.argTypes;
 			for (int j = 0; j < argTypes.length; j++) {
 				argsString += argTypes[j];
 				if (j != argTypes.length-1) {
 					argsString += ", ";
 				}
 			}
-			s += " [call " + callRoutineReference.routineName + "(" + argsString + ")]";
+			s += " [call " + callFunctionReference.routineName + "(" + argsString + ")]";
 		}
 		
 		if (variableThatWasChanged != null) {

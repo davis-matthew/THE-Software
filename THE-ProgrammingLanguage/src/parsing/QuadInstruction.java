@@ -1,13 +1,14 @@
 package parsing;
 
-enum InstructionType {
+enum QuadInstructionType {
 	Assignment, Branch, Print
 }
+
 public class QuadInstruction 
 {
-	InstructionType type;
+	QuadInstructionType type;
 	String instruction;
-	QuadInstruction(InstructionType type, String instruction) {
+	QuadInstruction(QuadInstructionType type, String instruction) {
 		this.type = type;
 		this.instruction = instruction;
 	}
