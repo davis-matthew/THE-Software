@@ -4,7 +4,7 @@ import java.util.ArrayList;
 
 // This class provides advanced string parsing functions for a custom programming language
 
-public class Parser {
+public class ParseUtil {
 	
 	// This contains the names of binary operators
 	//   grouped by operator precedence in reverse order.
@@ -70,7 +70,7 @@ public class Parser {
 				lines[i] = "";
 			} else {
 				// Prepare this string for evaluation
-				lines[i] = Parser.prepareStringForEvaluation(lines[i]);
+				lines[i] = ParseUtil.prepareStringForEvaluation(lines[i]);
 			}
 		}
 		
@@ -231,8 +231,8 @@ public class Parser {
 				break;
 				
 				// If this is an invalid symbol
-			} else if (!Parser.isLetter(chars[startIndex]) && chars[startIndex] != ' ' &&
-					!Parser.isDigit(chars[startIndex]) && chars[startIndex] != '_' &&
+			} else if (!ParseUtil.isLetter(chars[startIndex]) && chars[startIndex] != ' ' &&
+					!ParseUtil.isDigit(chars[startIndex]) && chars[startIndex] != '_' &&
 					chars[startIndex] != '$') {
 				break;
 			}

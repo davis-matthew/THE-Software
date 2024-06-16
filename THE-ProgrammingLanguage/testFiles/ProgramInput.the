@@ -1,8 +1,76 @@
 
-// This type of loop doesn't work properly currently
+int[] arr = int[8]
+int x = arr[3]
+
+/*
 for int i = 1, 5
 	print("HI")
 ]
+/* This is transformed into:
+[
+	int i = 1
+	loop
+		if i >= 5
+			break
+		]
+		print("HI")
+		i++
+	]
+]
+//*/
+
+/* 
+for int i = 1, 20, 2
+	print("HI")
+]
+/* This is transformed into:
+[
+	int i = 1
+	loop
+		if (i >= (20)) OR (i < (1))
+			break
+		]
+		print("HI")
+		i += 2
+	]
+]
+//*/
+
+/*
+string[] arr = string[5]
+for string str in arr
+	print("Hi")
+]
+/* This is transformed into:
+[
+	int i = 0
+	loop
+		if i >= #arr
+			break
+		]
+		string str = arr[i]
+		print("HI")
+		i++
+	]
+]
+//*/
+
+/* TODO c-like for loops not implemented yet
+for int i = 65, i > 4*4, i -= 1
+	print("HI")
+]
+/* This is transformed into:
+[
+	int i = 65
+	loop
+		if !(i > 4*4)
+			break
+		]
+		print("HI")
+		i -= 1
+	]
+]
+//*/
 
 /*
 int val = 1
@@ -27,20 +95,13 @@ do
 while true
 	print("Hi")
 ]
-*/
+//*/
 
 /*
 print(3 + newMethod())
 
 Int newMethod()
 	print("Hello world!")
-]
-*/
-
-/*
-int[] arr = int[5]
-for int i in arr
-	print(i)
 ]
 */
 

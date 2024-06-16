@@ -1,7 +1,5 @@
 package parsing;
 
-import java.util.ArrayList;
-
 // This class contains information about a single instruction (add, sub, mov, math, if, while, ...)
 
 enum InstructionType {
@@ -9,13 +7,14 @@ enum InstructionType {
 	BitAnd, BitOr, BitNot,
 	Less, Greater, LessEqual, GreaterEqual, Equal, NotEqual, RefEqual, RefNotEqual,
 	Print, KeyboardRead, ToString, Call,
-	Read, ReadProperty,
+	Read, // Read a primitive value from memory
+	ReadProperty, // Read a property of an object from memory (the actual property is resolved later)
 	Given, // Load a value from program memory (like a constant)
 	Reassign, // Change the value of an existing variable
 	Alloc,
 	AllocAndAssign, // Create a new variable and assign it to something
 	DeclareScope, // Sort of same as "Alloc"? Can probably be removed.
-	Length,
+	ArrayLength, // Read the length of an array
 	If, ElseIf, Else, EndBlock, Loop, Enscope, FunctionDefinition,
 	Break, Continue;
 	
@@ -75,6 +74,17 @@ enum InstructionType {
 		}
 		return null;
 	}
+	
+	// Return true if this instruction restricts the scope of the contents
+	public boolean doesStartScope() {
+		return this == Enscope || this == FunctionDefinition || this == Loop ||
+				this == If || this == Else || this == ElseIf;
+	}
+	
+	// Return true if this instruction closes a scope block (such as end-while)
+	public boolean doesEndScope() {
+		return this == EndBlock || this == Else || this == ElseIf;
+	}
 }
 
 public class Instruction {
@@ -129,13 +139,9 @@ public class Instruction {
 	// The next instruction in a mandatory chain (if-elseif-else chains only)
 	public Instruction nextChainedInstruction = null;
 	
-	// The list of instructions that immediately need the result of this instruction.
-	// (No transitive results in this list.)
-	public ArrayList<Instruction> referencedBy = new ArrayList<Instruction>(0);
-	
-	// The list of instructions that this instruction immediately needs the result of.
-	// (No transitive results in this list.)
-	public ArrayList<Instruction> references = new ArrayList<Instruction>(0);
+	// Some loop constructs require some code ran before starting the next iteration.
+	// This string contains code to be generated at the end of a loop.
+	public String codeToInjectAtEndOfBlock = null;
 	
 	// Create an instruction of a given type, and give it a unique id
 	public Instruction(InstructionType type) {
@@ -145,52 +151,18 @@ public class Instruction {
 	}
 	
 	// Add arguments to this instruction
-	public void createArgs(int numArgs) {
-		argReferences = new Instruction[numArgs];
-	}
-	
-	/*
-	// Add the given instructions to the list of referenced instructions,
-	//   and add this instruction to the list of referenced instructions in
-	//   each of the other instructions.
-	public void addReferences(ArrayList<Instruction> otherInstructions) {
-		// Add the reference to this
-		references.addAll(otherInstructions);
-		
-		// Add this as a reference to all others
-		for (int i = 0; i < otherInstructions.size(); i++) {
-			otherInstructions.get(i).referencedBy.add(this);
+	public void setArgs(Instruction... args) {
+		if (argReferences != null) {
+			new Exception("Arguments already assigned for instruction:\n" + this).printStackTrace();
 		}
-	}
-	*/
-	
-	// Add the given instruction to the list of referenced instructions,
-	//   and add this instruction to the list of referenced instructions in
-	//   the other instruction.
-	public void addTopologicalReference(Instruction otherInstruction) {
-		// Add the reference to this
-		references.add(otherInstruction);
-		
-		// Add this as a reference to the other
-		otherInstruction.referencedBy.add(this);
+		argReferences = args;
 	}
 	
-	// Return true if this is a container-type instruction (like If, Else, While, Routine...)
-	public boolean isContainerInstruction() {
-		return instructionType == InstructionType.If ||
-				instructionType == InstructionType.Else ||
-				instructionType == InstructionType.ElseIf ||
-				instructionType == InstructionType.Enscope ||
-				instructionType == InstructionType.Loop ||
-				instructionType == InstructionType.FunctionDefinition;
-	}
-	
-	// Return true if this is an If, ElseIf, Else, or Switch
+	// Return true if this is an If, ElseIf, or Else
 	public boolean isConditional() {
 		return instructionType == InstructionType.If ||
 				instructionType == InstructionType.ElseIf ||
 				instructionType == InstructionType.Else;
-				// instructionType == InstructionType.Switch;
 	}
 	
 	public QuadInstruction toQuadIR() {
@@ -205,6 +177,11 @@ public class Instruction {
 	// Beautiful representation of this instruction
 	public String toString() {
 		String s = id + " ";
+		
+		// Add padding to align columns
+		if (id < 100) {
+			s += " ";
+		}
 		if (id < 10) {
 			s += " ";
 		}
@@ -213,7 +190,7 @@ public class Instruction {
 		Instruction parent = parentInstruction;
 		String indents = "";
 		while (parent != null) {
-			indents += ": ";
+			indents += "| ";
 			parent = parent.parentInstruction;
 		}
 		s += indents;
@@ -233,17 +210,6 @@ public class Instruction {
 		
 		if (returnType != null && returnType != Type.Void) {
 			s += "->" + returnType;
-		}
-		
-		if (references.size() != 0) {
-			s += " [ref ";
-			for (int i = 0; i < references.size(); i++) {
-				s += references.get(i).id;
-				if (i != references.size()-1) {
-					s += ", ";
-				}
-			}
-			s += "]";
 		}
 		
 		if (argReferences != null) {
