@@ -1,6 +1,6 @@
 
 int[] arr = int[8]
-int x = arr[3]
+arr[3] = 6
 
 /*
 for int i = 1, 5

@@ -3,17 +3,18 @@ package parsing;
 // This class contains information about a single instruction (add, sub, mov, math, if, while, ...)
 
 enum InstructionType {
-	Add, Sub, Concat, Mult, Div, Modulo, Power, And, Or, Not, Increment, Decrement,
+	Add, Sub, Concat, Mult, Div, Modulo, Power, And, Or, Not,
 	BitAnd, BitOr, BitNot,
 	Less, Greater, LessEqual, GreaterEqual, Equal, NotEqual, RefEqual, RefNotEqual,
 	Print, KeyboardRead, ToString, Call,
-	Read, // Read a primitive value from memory
-	ReadProperty, // Read a property of an object from memory (the actual property is resolved later)
+	Read, // Read a from memory
+	WriteToReference, // Write to a reference to a variable or memory
+	ReadBuiltInProperty, // Read a property of an object, such as length of an array or other special property.
 	Given, // Load a value from program memory (like a constant)
 	Reassign, // Change the value of an existing variable
-	Alloc,
-	AllocAndAssign, // Create a new variable and assign it to something
-	DeclareScope, // Sort of same as "Alloc"? Can probably be removed.
+	Alloc, // Allocate memory, but without assigning it to any variable
+	AllocAndAssign, // Allocate a new variable and assign it to something
+	DeclareScope, // Declare the scope of a variable without assigning it to anything???
 	ArrayLength, // Read the length of an array
 	If, ElseIf, Else, EndBlock, Loop, Enscope, FunctionDefinition,
 	Break, Continue;
@@ -37,10 +38,6 @@ enum InstructionType {
 			return "OR";
 		} else if (this == Not || this == BitNot) {
 			return "!";
-		} else if (this == Increment) {
-			return "++";
-		} else if (this == Decrement) {
-			return "--";
 		} else if (this == Less) {
 			return "<";
 		} else if (this == Greater) {

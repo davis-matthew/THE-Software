@@ -703,20 +703,20 @@ public class Compiler {
 				// Create the variable
 				Variable var = new Variable(varName, varType);
 				
-				Object[] assignmentData = ParseUtil.getFirstAssignmentOperator(line, varEndIndex);
+				StringStartEnd assignmentInfo = ParseUtil.getFirstAssignmentOperator(line, varEndIndex);
 				String operator = null;
 				int operatorEndIndex;
 				String expressionContent = null;
 				
 				// There may not be any assignment on this line (only declaration)
-				if (assignmentData != null) {
-					operator = (String)assignmentData[0];
-					operatorEndIndex = (int)assignmentData[1];
+				if (assignmentInfo != null) {
+					operator = assignmentInfo.string;
+					operatorEndIndex = assignmentInfo.endIndex;
 					expressionContent = line.substring(operatorEndIndex).trim();
 				}
 				
 				// If this is an scope declaration only (no value assigned, and no allocation)
-				if (assignmentData == null) {
+				if (assignmentInfo == null) {
 					// Make sure there aren't excess characters at the end of this line
 					if (ParseUtil.checkForExcessCharacters(line, varName)) {
 						return true;
@@ -762,9 +762,101 @@ public class Compiler {
 					return true;
 				}
 			}
-		} else if (ParseUtil.getVariableName(line, 0) != null &&
-					ParseUtil.hasAssignmentOperator(line)) { // If this is a reassignment of a variable
+		} else if (ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(line, ParseUtil.assignmentOperators) != null) { // If this is some form of reassignment
 			
+			// Find the position of the assignment operator on this line
+			StringStartEnd assignmentInfo = ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(line, ParseUtil.assignmentOperators);
+			
+			if (assignmentInfo == null) {
+				printError("Assignment expected");
+				return true;
+			}
+			
+			final String assignmentOp = assignmentInfo.string;
+			final String firstHalf = line.substring(0, assignmentInfo.startIndex);
+			final String secondHalf = line.substring(assignmentInfo.endIndex);
+			
+			// Parse out the variable or object to assign to
+			boolean hadError = parseExpression(parentInstruction, secondHalf);
+			if (hadError) {
+				return true;
+			}
+			
+			Instruction lastInstructionFromSecondHalf = instructions.get(instructions.size() - 1);
+			
+			// Parse out the value to assign to the variable
+			hadError = parseExpression(parentInstruction, firstHalf);
+			if (hadError) {
+				return true;
+			}
+			
+			Instruction lastInstructionFromFirstHalf = instructions.get(instructions.size() - 1);
+			
+			// TODO need to do type-checking on all these arguments
+			
+			// If this is an assignment (by value)
+			if (assignmentOp.equals("=")) {
+				
+				Instruction assignment = new Instruction(InstructionType.WriteToReference);
+				assignment.stringRepresentation = line;
+				assignment.setArgs(lastInstructionFromFirstHalf, lastInstructionFromSecondHalf);
+				assignment.parentInstruction = parentInstruction;
+				instructions.add(assignment);
+				
+			} else if (assignmentOp.equals("++") || assignmentOp.equals("--")) { // Increment/Decrement
+				
+				if (!secondHalf.trim().isEmpty()) {
+					printError(assignmentOp + " cannot be followed by anything.");
+					return true;
+				}
+				
+				InstructionType incrementType = null;
+				if (assignmentOp.equals("++")) {
+					incrementType = InstructionType.Add;
+				} else if (assignmentOp.equals("--")) {
+					incrementType = InstructionType.Sub;
+				} else {
+					printError("Unknown operator: " + assignmentOp);
+					return true;
+				}
+				
+				Instruction one = new Instruction(InstructionType.Given);
+				one.stringRepresentation = "1";
+				one.primitiveGivenValue = 1;
+				one.parentInstruction = parentInstruction;
+				instructions.add(one);
+				
+				Instruction addOrSubtract = new Instruction(incrementType);
+				addOrSubtract.stringRepresentation = firstHalf;
+				addOrSubtract.setArgs(lastInstructionFromFirstHalf, one);
+				addOrSubtract.parentInstruction = parentInstruction;
+				instructions.add(addOrSubtract);
+				
+				Instruction writeToFirstHalf = new Instruction(InstructionType.WriteToReference);
+				writeToFirstHalf.stringRepresentation = firstHalf;
+				writeToFirstHalf.setArgs(lastInstructionFromFirstHalf, addOrSubtract);
+				writeToFirstHalf.parentInstruction = parentInstruction;
+				instructions.add(writeToFirstHalf);
+				
+				// TODO reading from an array is broken!
+				
+			} else if (assignmentOp.equals("+=")  || assignmentOp.equals("-=") || // If this is a shorthand operator
+					   assignmentOp.equals("/=")  || assignmentOp.equals("*=") ||
+					   assignmentOp.equals("^=")  || assignmentOp.equals("%=") ||
+					   assignmentOp.equals("OR=") || assignmentOp.equals("AND=")) {
+				
+				// TODO
+				
+				InstructionType shorthandInstructionType = getInstructionTypeFromOperator(assignmentOp);
+				
+				printError("Not implemented yet");
+				return true;
+				
+			} else {
+				printError("Invalid assignment operator");
+				return true;
+			}
+			/*
 			Object[] varData = ParseUtil.getVariableName(line, 0);
 			if (varData == null) {
 				return true;
@@ -829,13 +921,13 @@ public class Compiler {
 			}
 			
 			// Get the operator on this line
-			Object[] assignmentData = ParseUtil.getFirstAssignmentOperator(line, varEndIndex);
-			if (assignmentData == null) {
+			StringStartEnd assignmentInfo = ParseUtil.getFirstAssignmentOperator(line, varEndIndex);
+			if (assignmentInfo == null) {
 				printError("Missing assignment");
 				return true;
 			}
-			String operator = (String)assignmentData[0];
-			int operatorEndIndex = (int)assignmentData[1];
+			String operator = assignmentInfo.string;
+			int operatorEndIndex = assignmentInfo.endIndex;
 			
 			String expressionContent = line.substring(operatorEndIndex).trim();
 			
@@ -930,6 +1022,7 @@ public class Compiler {
 				printError("Invalid assignment operator");
 				return true;
 			}
+			*/
 		} else if (ParseUtil.isFunctionCall(line)) { // If this is a function call alone on a line
 			
 			String[] data = ParseUtil.getFunctionNameAndArgs(line);
@@ -1014,11 +1107,11 @@ public class Compiler {
 		}
 		
 		// If this contains a binary operator (on this level)
-		Object[] operatorData = ParseUtil.findLowestPrecedenceBinaryOperatorAtLowestLevel(text);
-		if (operatorData != null) {
-			String op = (String)operatorData[0];
-			int start = (int)operatorData[1];
-			int end = (int)operatorData[2];
+		StringStartEnd operatorInfo = ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(text, ParseUtil.binaryOperators);
+		if (operatorInfo != null) {
+			String op = operatorInfo.string;
+			int start = operatorInfo.startIndex;
+			int end = operatorInfo.endIndex;
 			
 			String firstHalf = text.substring(0, start).trim();
 			String lastHalf = text.substring(end).trim();
@@ -1273,7 +1366,7 @@ public class Compiler {
 					if (var.type.isPrimitiveType()) {
 						instr = new Instruction(InstructionType.Read);
 					} else { // If it is an array, object, or structure type
-						instr = new Instruction(InstructionType.ReadProperty);
+						instr = new Instruction(InstructionType.ReadBuiltInProperty);
 					}
 					
 					instr.stringRepresentation = text;
@@ -1293,84 +1386,6 @@ public class Compiler {
 			}
 		}
 		
-		return false;
-	}
-	
-	// Generate the instructions to perform a binary operator on a single variable
-	// Instructions generated:
-	//    1. Read variable
-	//    2. Binary operator on (1) and given lastInstruction
-	//    3. Reassign variable to (2)
-	static boolean generateBinaryReassignment(Variable var,
-				InstructionType instructionType, Instruction lastInstruction,
-				Instruction parentInstruction, Instruction readInstr) {
-		
-		// Determine any overloaded operators
-		if (var.type == Type.String) {
-			if (instructionType == InstructionType.Add) {
-				instructionType = InstructionType.Concat;
-			}
-		} else if (var.type == Type.Int || var.type == Type.Long) {
-			if (instructionType == InstructionType.And) {
-				instructionType = InstructionType.BitAnd;
-			} else if (instructionType == InstructionType.Or) {
-				instructionType = InstructionType.BitOr;
-			} else if (instructionType == InstructionType.Not) {
-				instructionType = InstructionType.BitNot;
-			}
-		}
-		
-		Type operandType = lastInstruction.returnType;
-		
-		Type returnType = getReturnTypeFromInstructionAndOperands(
-				instructionType, var.type, operandType);
-		
-		if (returnType == null) {
-			return true;
-		}
-		
-		// Check if the return type can be explicitly cast to the variable being assigned to
-		if (!returnType.canImplicitlyCastTo(var.type)) {
-			printError("Cannot implicitly cast " + returnType + " to " + var.type);
-			return true;
-		}
-		
-		// Create the read operation (if not given)
-		if (readInstr == null) {
-			readInstr = new Instruction(InstructionType.Read);
-			readInstr.stringRepresentation = var.name;
-			readInstr.variableThatWasRead = var;
-			readInstr.returnType = var.type;
-			readInstr.parentInstruction = parentInstruction;
-			instructions.add(readInstr);
-			
-			// Find the all previous instructions that possibly assigned this variable, and reference them
-			boolean foundLastWriteInstruction = wasAssignmentGuaranteed(readInstr, var);
-			if (!foundLastWriteInstruction) {
-				printError("Variable " + var + " was never initialized");
-				return true;
-			}
-		}
-		
-		// Create the instruction that computes the new value to assign
-		Instruction mathInstr = new Instruction(instructionType);
-		mathInstr.stringRepresentation = var.name + " " + instructionType.toSymbolForm()
-				+ " (" + lastInstruction.stringRepresentation + ")";
-		mathInstr.setArgs(readInstr, lastInstruction);
-		mathInstr.returnType = returnType;
-		mathInstr.parentInstruction = parentInstruction;
-		instructions.add(mathInstr);
-
-		// Create the instruction that reassigns the value
-		Instruction reassignInstr = new Instruction(InstructionType.Reassign);
-		reassignInstr.setArgs(mathInstr);
-		reassignInstr.stringRepresentation = var.name + " = "
-				+ mathInstr.stringRepresentation;
-		reassignInstr.variableThatWasChanged = var;
-		reassignInstr.parentInstruction = parentInstruction;
-		instructions.add(reassignInstr);
-		
-		// No errors
 		return false;
 	}
 	

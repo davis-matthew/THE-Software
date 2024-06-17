@@ -304,7 +304,7 @@ public class ParseUtil {
 	
 	// Return the next operator and its end index.
 	// Start searching from the given index.
-	static Object[] getFirstAssignmentOperator(String line, int startIndex) {
+	static StringStartEnd getFirstAssignmentOperator(String line, int startIndex) {
 		
 		// Skip past the spaces, if any
 		while (startIndex < line.length() && line.charAt(startIndex) == ' ') {
@@ -316,7 +316,7 @@ public class ParseUtil {
 		// Iterate over all of the assignment operators
 		for (int i = 0; i < assignmentOperators.length; i++) {
 			if (substring.startsWith(assignmentOperators[i])) {
-				return new Object[] {assignmentOperators[i], startIndex + assignmentOperators[i].length()};
+				return new StringStartEnd(assignmentOperators[i], startIndex, startIndex + assignmentOperators[i].length());
 			}
 		}
 		
@@ -757,26 +757,6 @@ public class ParseUtil {
 		return new Object[] {s.substring(firstIndex, endIndex), endIndex};
 	}
 	
-	/*
-	// Add spaces around negative signs that are being used for subtraction,
-	//   and not ones in strings or ones being used for negative numbers.
-	static String addSpacesAroundSubtractions(String o) {
-		boolean isInsideString = false;
-		for (int i = 1; i < o.length()-1; i++) {
-			if (o.charAt(i) == '"') {
-				isInsideString = !isInsideString;
-			} else if (!isInsideString && o.charAt(i) == '-') {
-				// If the previous character is a number of value of some sort
-				if (isPrecededByValue(o, i-1)) {
-					o = o.substring(0, i) + " - " + o.substring(i+1);
-					i += 2;
-				}
-			}
-		}
-		return o;
-	}
-	*/
-	
 	// Return true if this index in the string is preceded by some sort of number or variable
 	static boolean isPrecededByValue(String s, int index) {
 		index--;
@@ -873,37 +853,49 @@ public class ParseUtil {
 		return original;
 	}
 	
-	// Return information about the lowest precedence binary operator on the lowest parenthetic level
-	static Object[] findLowestPrecedenceBinaryOperatorAtLowestLevel(final String s) {
-		
+	// Return information about the lowest precedence operator on the lowest parenthetic level.
+	// Search only for binary operators in the given 2D-array of operators.
+	// The first dimension is for operators of different precedence, and the second
+	// dimension is for operators of equal precedence.
+	static StringStartEnd findLowestPrecedenceOperatorAtLowestLevel(final String s, final String[][] operators) {
 		// Search through the operations in order of operations
-		for (int j = 0; j < binaryOperators.length; j++) {
-			int numParentheses = 0;
-			int numBrackets = 0;
-			boolean isInString = false;
-			
-			// Binary operator cannot be the first symbol.
-			// We want the last one, so iterate backward.
-			for (int i = s.length()-1; i > 0; i--) {
-				char c = s.charAt(i);
-				if (c == '\"') {
-					isInString = !isInString;
-				} else if (c == '[') {
-					numBrackets++;
-				} else if (c == ']') {
-					numBrackets--;
-				} else if (c == '(') {
-					numParentheses++;
-				} else if (c == ')') {
-					numParentheses--;
-				} else {
-					// Try to find and return the binary operator and index if possible
-					String binaryOperator = getBinaryOperatorFromList(s, i, binaryOperators[j]);
-					if (binaryOperator != null && numParentheses == 0 &&
-							numBrackets == 0 && !isInString) {
-						
-						return new Object[] {binaryOperator, i, i + binaryOperator.length()};
-					}
+		for (int j = 0; j < operators.length; j++) {
+			StringStartEnd result = findLowestPrecedenceOperatorAtLowestLevel(s, operators[j]);
+			if (result != null) {
+				return result;
+			}
+		}
+		return null;
+	}
+	
+	// Overload for the above function
+	static StringStartEnd findLowestPrecedenceOperatorAtLowestLevel(final String s, final String[] operators) {
+		
+		int numParentheses = 0;
+		int numBrackets = 0;
+		boolean isInString = false;
+		
+		// Binary operator cannot be the first symbol.
+		// We want the last one, so iterate backward.
+		for (int i = s.length()-1; i > 0; i--) {
+			char c = s.charAt(i);
+			if (c == '\"') {
+				isInString = !isInString;
+			} else if (c == '[') {
+				numBrackets++;
+			} else if (c == ']') {
+				numBrackets--;
+			} else if (c == '(') {
+				numParentheses++;
+			} else if (c == ')') {
+				numParentheses--;
+			} else {
+				// Try to find and return the binary operator and index if possible
+				String binaryOperator = getBinaryOperatorFromList(s, i, operators);
+				if (binaryOperator != null && numParentheses == 0 &&
+						numBrackets == 0 && !isInString) {
+					
+					return new StringStartEnd(binaryOperator, i, i + binaryOperator.length());
 				}
 			}
 		}
@@ -1423,3 +1415,22 @@ public class ParseUtil {
 		}
 	}
 }
+
+// Holds a string, and a relevant start and end index for that string.
+class StringStartEnd {
+	final String string;
+	final int startIndex;
+	final int endIndex;
+	
+	public StringStartEnd(String str, int start, int end) {
+		this.string = str;
+		this.startIndex = start;
+		this.endIndex = end;
+	}
+	
+	@Override
+	public String toString() {
+		return "'" + string + "' [" + startIndex + ", " + endIndex + "]";
+	}
+}
+
