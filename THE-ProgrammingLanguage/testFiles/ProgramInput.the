@@ -1,6 +1,6 @@
 
-int[] arr = int[8]
-arr[3] = 6
+int[,] arr = int[8,9]
+arr[3,4]--
 
 /*
 for int i = 1, 5

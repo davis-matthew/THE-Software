@@ -136,4 +136,18 @@ public enum Type {
 		
 		return false;
 	}
+	
+	@Override
+	public String toString() {
+		if (isArrayType()) {
+			String s = toArrayPrimitiveType().name().toLowerCase() + "[";
+			for (int i = 0; i < dimensions - 1; i++) {
+				s += ",";
+			}
+			s += "]";
+			return s;
+		} else {
+			return this.name();
+		}
+	}
 }

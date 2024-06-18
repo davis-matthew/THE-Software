@@ -89,21 +89,6 @@ public class ParseUtil {
 		s = replaceOutsideLiteral(s, "  ", " ", false);
 		s = replaceOutsideLiteral(s, " \n", "\n", false);
 		
-		// Add spaces around operators
-		boolean isInsideString = false;
-		for (int i = 0; i < s.length(); i++) {
-			if (s.charAt(i) == '"') {
-				isInsideString = !isInsideString;
-			} else if (!isInsideString) {
-				// Find any binary operator at this index (without relying on surrounding spaces)
-				String op = getBinaryOperatorNoSpaces(s, i);
-				if (op != null) {
-					s = s.substring(0, i) + " " + op + " " + s.substring(i+op.length());
-					i += op.length();
-				}
-			}
-		}
-		
 		// Remove double and triple spaces
 		s = replaceOutsideLiteral(s, "   ", " ", false);
 		s = replaceOutsideLiteral(s, "  ", " ", false);
@@ -890,13 +875,30 @@ public class ParseUtil {
 			} else if (c == ')') {
 				numParentheses--;
 			} else {
-				// Try to find and return the binary operator and index if possible
-				String binaryOperator = getBinaryOperatorFromList(s, i, operators);
-				if (binaryOperator != null && numParentheses == 0 &&
-						numBrackets == 0 && !isInString) {
-					
+				// Try to find and return the operator and index if possible
+				String binaryOperator = getOperatorFromList(s, i, operators);
+				if (binaryOperator != null && numParentheses == 0 && numBrackets == 0 && !isInString) {
 					return new StringStartEnd(binaryOperator, i, i + binaryOperator.length());
 				}
+			}
+		}
+		
+		return null;
+	}
+	
+	// Return which operator this is at the given starting index, if any.
+	// Only search for operators in the given list 'operators'.
+	static String getOperatorFromList(String s, int index, String[] operators) {
+		
+		// Operators cannot be the first or last character on a line
+		if (index == 0 || index == s.length() - 1) {
+			return null;
+		}
+		
+		// Iterate over every binary operator in the given list
+		for (int j = 0; j < operators.length; j++) {
+			if (s.startsWith(operators[j], index)) {
+				return operators[j];
 			}
 		}
 		
@@ -953,122 +955,6 @@ public class ParseUtil {
 							s.charAt(index + binaryOperators[i][j].length()) == ' ') {
 					return binaryOperators[i][j];
 				}
-			}
-		}
-		
-		return null;
-	}
-	
-	// Return which binary operator this is at the given starting index, if any.
-	// Do this without relying on surrounding spaces.
-	static String getBinaryOperatorNoSpaces(String s, int index) {
-		
-		// Binary operators cannot be at the end of a line
-		if (index == 0 || index == s.length()-1) {
-			return null;
-		}
-		
-		String substring = s.substring(index);
-		
-		// Iterate over every binary operator (and take the longest one)
-		String longestOperator = null;
-		int length = 0;
-		for (int i = 0; i < binaryOperators.length; i++) {
-			for (int j = 0; j < binaryOperators[i].length; j++) {
-				String op = binaryOperators[i][j];
-				
-				// If this binary operator is the last character on the line
-				if (index + op.length() >= s.length()) {
-					continue;
-				}
-				
-				// Find the previous non-space character
-				char previousChar = 0;
-				for (int k = index-1; k >= 0; k--) {
-					if (s.charAt(k) != ' ') {
-						previousChar = s.charAt(k);
-						break;
-					}
-				}
-				
-				// If there is no previous character, then this is not a binary operator
-				if (previousChar == 0) {
-					continue;
-				}
-				
-				// Make sure that all binary operators are preceded by some sort of value
-				if (!isPrecededByValue(s, index)) {
-					continue;
-				}
-				
-				char trailingChar = s.charAt(index + op.length());
-				
-				/*
-				// If this is a negative sign, and a number is directly trailing it, then
-				//   it is not a binary operator.
-				if (op.equals("-") && (isDigit(trailingChar) || trailingChar == '.')) {
-					continue;
-				}
-				*/
-				
-				// Make sure that the next character is a valid symbol
-				if (isLetter(trailingChar) || isDigit(trailingChar) || trailingChar == '.'
-						|| trailingChar == '(' || trailingChar == '!' || trailingChar == ' '
-						|| trailingChar == '#' || trailingChar == '@'
-						|| trailingChar == '_' || trailingChar == '-') {
-					
-					if (substring.startsWith(op)) {
-						if (op.length() > length) {
-							length = op.length();
-							longestOperator = op;
-						}
-					}
-				}
-			}
-		}
-		
-		// Iterate over the assignment operators too
-		for (int i = 0; i < assignmentOperators.length; i++) {
-			String op = assignmentOperators[i];
-			
-			// If this binary operator is the last character on the line
-			if (index + op.length() >= s.length()) {
-				continue;
-			}
-			
-			// Make sure that the next character is not an invalid symbol
-			char trailingChar = s.charAt(index + op.length());
-			if (isLetter(trailingChar) || isDigit(trailingChar) || trailingChar == '.'
-					|| trailingChar == '(' || trailingChar == '!' || trailingChar == '"'
-					|| trailingChar == '\'' || trailingChar == ' ' || trailingChar == '#'
-					|| trailingChar == '@' || trailingChar == '_') {
-				
-				if (substring.startsWith(op)) {
-					if (op.length() > length) {
-						length = op.length();
-						longestOperator = op;
-					}
-				}
-			}
-		}
-		
-		return longestOperator;
-	}
-	
-	// Return which binary operator this is at the given starting index, if any
-	static String getBinaryOperatorFromList(String s, int index, String[] operators) {
-		
-		// Binary operators cannot be the last character in a line
-		if (index == 0 || index == s.length()-1 || s.charAt(index-1) != ' ') {
-			return null;
-		}
-		
-		String substring = s.substring(index);
-		// Iterate over every binary operator in the given list
-		for (int j = 0; j < operators.length; j++) {
-			// Binary operators must have a space afterward
-			if (substring.startsWith(operators[j]) && s.charAt(index + operators[j].length()) == ' ') {
-				return operators[j];
 			}
 		}
 		

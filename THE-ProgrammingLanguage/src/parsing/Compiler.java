@@ -773,40 +773,71 @@ public class Compiler {
 			}
 			
 			final String assignmentOp = assignmentInfo.string;
-			final String firstHalf = line.substring(0, assignmentInfo.startIndex);
-			final String secondHalf = line.substring(assignmentInfo.endIndex);
+			final String leftHandString = line.substring(0, assignmentInfo.startIndex);
+			final String rightHandString = line.substring(assignmentInfo.endIndex);
 			
+			Instruction lastInstructionFromRightHand = null;
+			
+			// Only parse out the right-hand side if non-empty
+			if (!rightHandString.trim().isEmpty()) {
+			
+					// Parse out the value to assign to the variable
+				boolean hadError = parseExpression(parentInstruction, rightHandString);
+				if (hadError) {
+					return true;
+				}
+				
+				lastInstructionFromRightHand = instructions.get(instructions.size() - 1);
+			}
+
 			// Parse out the variable or object to assign to
-			boolean hadError = parseExpression(parentInstruction, secondHalf);
+			boolean hadError = parseExpression(parentInstruction, leftHandString);
 			if (hadError) {
 				return true;
 			}
 			
-			Instruction lastInstructionFromSecondHalf = instructions.get(instructions.size() - 1);
+			Instruction lastInstructionFromLeftHand = instructions.get(instructions.size() - 1);
 			
-			// Parse out the value to assign to the variable
-			hadError = parseExpression(parentInstruction, firstHalf);
-			if (hadError) {
+			// We expect the last instruction from the left-hand-side to read some variable
+			if (lastInstructionFromLeftHand.variableThatWasRead == null) {
+				printError("Left-hand side is not a variable or reference");
 				return true;
 			}
 			
-			Instruction lastInstructionFromFirstHalf = instructions.get(instructions.size() - 1);
+			// We expect the last instruction from the left-hand-side to be a "Read" operation
+			if (lastInstructionFromLeftHand.instructionType != InstructionType.Read) {
+				printError("(Internal) Left-hand-side should end in a 'Read' instruction");
+				return true;
+			}
 			
-			// TODO need to do type-checking on all these arguments
+			final Type leftHandType = lastInstructionFromLeftHand.returnType;
 			
 			// If this is an assignment (by value)
 			if (assignmentOp.equals("=")) {
 				
+				final Type rightHandType = lastInstructionFromRightHand.returnType;
+				
+				// Check that we can put this type of value in this variable/struct
+				if (!rightHandType.canImplicitlyCastTo(leftHandType)) {
+					printError("Cannot implicitly cast from " + rightHandType + " to " + leftHandType);
+					return true;
+				}
+				
 				Instruction assignment = new Instruction(InstructionType.WriteToReference);
 				assignment.stringRepresentation = line;
-				assignment.setArgs(lastInstructionFromFirstHalf, lastInstructionFromSecondHalf);
+				assignment.setArgs(lastInstructionFromLeftHand, lastInstructionFromRightHand);
 				assignment.parentInstruction = parentInstruction;
 				instructions.add(assignment);
 				
 			} else if (assignmentOp.equals("++") || assignmentOp.equals("--")) { // Increment/Decrement
 				
-				if (!secondHalf.trim().isEmpty()) {
-					printError(assignmentOp + " cannot be followed by anything.");
+				if (!leftHandType.isNumberType()) {
+					printError(assignmentOp + " can only be applied to a numeric type");
+					return true;
+				}
+				
+				if (!rightHandString.trim().isEmpty()) {
+					printError(assignmentOp + " cannot be followed by an expression");
 					return true;
 				}
 				
@@ -823,27 +854,32 @@ public class Compiler {
 				Instruction one = new Instruction(InstructionType.Given);
 				one.stringRepresentation = "1";
 				one.primitiveGivenValue = 1;
+				one.returnType = Type.Int;
 				one.parentInstruction = parentInstruction;
 				instructions.add(one);
 				
 				Instruction addOrSubtract = new Instruction(incrementType);
-				addOrSubtract.stringRepresentation = firstHalf;
-				addOrSubtract.setArgs(lastInstructionFromFirstHalf, one);
+				addOrSubtract.stringRepresentation = leftHandString;
+				addOrSubtract.setArgs(lastInstructionFromLeftHand, one);
+				addOrSubtract.returnType = getReturnTypeFromInstructionAndOperands(
+							incrementType, lastInstructionFromLeftHand.returnType, one.returnType);
 				addOrSubtract.parentInstruction = parentInstruction;
 				instructions.add(addOrSubtract);
 				
 				Instruction writeToFirstHalf = new Instruction(InstructionType.WriteToReference);
-				writeToFirstHalf.stringRepresentation = firstHalf;
-				writeToFirstHalf.setArgs(lastInstructionFromFirstHalf, addOrSubtract);
+				writeToFirstHalf.stringRepresentation = leftHandString;
+				writeToFirstHalf.setArgs(lastInstructionFromLeftHand, addOrSubtract);
 				writeToFirstHalf.parentInstruction = parentInstruction;
 				instructions.add(writeToFirstHalf);
-				
-				// TODO reading from an array is broken!
 				
 			} else if (assignmentOp.equals("+=")  || assignmentOp.equals("-=") || // If this is a shorthand operator
 					   assignmentOp.equals("/=")  || assignmentOp.equals("*=") ||
 					   assignmentOp.equals("^=")  || assignmentOp.equals("%=") ||
 					   assignmentOp.equals("OR=") || assignmentOp.equals("AND=")) {
+				
+				final Type rightHandType = lastInstructionFromRightHand.returnType;
+				
+				// TODO need to do type-checking on all these arguments
 				
 				// TODO
 				
@@ -1357,7 +1393,7 @@ public class Compiler {
 					// Check if this is a recognized variable
 					Variable var = findVariableByName(parentInstruction, text);
 					if (var == null) {
-						printError("Unknown expression '" + text + "'");
+						printError("Undeclared variable '" + text + "'");
 						return true;
 					}
 					
