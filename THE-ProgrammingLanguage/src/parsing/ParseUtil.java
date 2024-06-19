@@ -2,6 +2,8 @@ package parsing;
 
 import java.util.ArrayList;
 
+import static parsing.ErrorHandler.*;
+
 // This class provides advanced string parsing functions for a custom programming language
 
 public class ParseUtil {
@@ -13,7 +15,10 @@ public class ParseUtil {
 			{"=", "!="},			// content equal, not content equal
 			{"@=", "!@="},			// reference equal, not reference equal
 			{"<", ">", "<=", ">="}, // Size comparisons, <, >, <=, >=
-			{"AND", "OR"},			// Logic
+			{"&"},					// Bitwise Logic
+			{"|"},					// Bitwise Logic
+			{"&&"},					// Boolean Logic
+			{"||"},					// Boolean Logic
 			{"+", "-"},				// Addition, subtraction
 			{"*", "/", "%"},		// Multiplication, division, modulus
 			{"^"}					// Raise to power
@@ -22,7 +27,7 @@ public class ParseUtil {
 	// List of assignment operators (always come after a variable name)
 	static final String[] assignmentOperators =
 		{
-			"=", "<-", "++", "--", "AND=", "OR=", "+=", "-=", "*=", "/=", "^=", "%=", "@="
+			"=", "++", "--", "&=", "|=", "&&=", "||=", "+=", "-=", "*=", "/=", "^=", "%=", "@="
 		};
 	
 	// List of keywords that indicate a variable instantiate or allocation
@@ -69,47 +74,42 @@ public class ParseUtil {
 			if (isInComment) {
 				lines[i] = "";
 			} else {
-				// Prepare this string for evaluation
-				lines[i] = ParseUtil.prepareStringForEvaluation(lines[i]);
+				
 			}
 		}
 		
 		return lines;
 	}
 	
-	// Prepare the string for faster parsing later
-	public static String prepareStringForEvaluation(String s) {
-		
-		if (s.isEmpty()) {
-			return s;
-		}
-		
-		// Remove spaces at the end of each line
-		s = replaceOutsideLiteral(s, "   ", " ", false);
-		s = replaceOutsideLiteral(s, "  ", " ", false);
-		s = replaceOutsideLiteral(s, " \n", "\n", false);
-		
-		// Remove double and triple spaces
-		s = replaceOutsideLiteral(s, "   ", " ", false);
-		s = replaceOutsideLiteral(s, "  ", " ", false);
-		
-		// Remove tabs
-		s = replaceOutsideLiteral(s, "\t", "", false);
-		
-		s = replaceNegativesWithMultiplication(s);
-		
-		// Remove white space after unary functions
-		s = replaceOutsideLiteral(s, "# ", "#", false);
-		s = replaceOutsideLiteral(s, "! ", "!", false);
-		
-		return s;
-	}
-	
 	// Remove white space from each individual line
+	// and prepare the string for evaluation.
 	static String[] removeWhiteSpace(String[] lines) {
 		for (int i = 0; i < lines.length; i++) {
-			lines[i] = replaceOutsideLiteral(lines[i], "  ", " ", false);
-			lines[i] = replaceOutsideLiteral(lines[i], "\t", "", false).trim();
+			String s = lines[i].trim();
+			
+			if (!s.isEmpty()) {
+				s = replaceOutsideLiteral(s, "\t", "    ", false).trim();
+				
+				// Remove spaces at the end of each line
+				s = replaceOutsideLiteral(s, "   ", " ", false);
+				s = replaceOutsideLiteral(s, "  ", " ", false);
+				s = replaceOutsideLiteral(s, " \n", "\n", false);
+				
+				// Remove double and triple spaces
+				s = replaceOutsideLiteral(s, "   ", " ", false);
+				s = replaceOutsideLiteral(s, "  ", " ", false);
+				
+				// Remove tabs
+				s = replaceOutsideLiteral(s, "\t", "", false);
+				
+				s = replaceNegativesWithMultiplication(s);
+				
+				// Remove white space after unary functions
+				s = replaceOutsideLiteral(s, "# ", "#", false);
+				s = replaceOutsideLiteral(s, "! ", "!", false);
+				
+				lines[i] = s;
+			}
 		}
 		return lines;
 	}
@@ -120,8 +120,10 @@ public class ParseUtil {
 	}
 	
 	// Return true if there are excess characters at the end of this line after the given function content
-	static boolean checkForExcessCharacters(String line, String content) {
+	static void checkForExcessCharacters(String line, String content) {
+		
 		int endIndex = line.lastIndexOf(content) + content.length() + 1;
+		
 		boolean hasExcessCharacters = endIndex < line.length();
 		if (hasExcessCharacters) {
 			if (endIndex == line.length() - 1) {
@@ -130,7 +132,6 @@ public class ParseUtil {
 				printError("Excess characters at end of line '" + line + "'");
 			}
 		}
-		return hasExcessCharacters;
 	}
 	
 	// Returns the argument to a unary function (like ! or #) from the given startIndex
@@ -142,7 +143,6 @@ public class ParseUtil {
 		
 		if (startIndex >= chars.length) {
 			printError("Missing operand in '" + text + "'");
-			return null;
 		}
 		
 		int endIndex = startIndex;
@@ -181,22 +181,18 @@ public class ParseUtil {
 		
 		if (numParentheses > 0) {
 			printError("Missing closing parenthesis in '" + text + "'");
-			return null;
 		}
 		
 		if (numBrackets > 0) {
 			printError("Missing closing square brackets in '" + text + "'");
-			return null;
 		}
 		
 		if (isInsideString) {
 			printError("Missing closing quotation in '" + text + "'");
-			return null;
 		}
 		
 		if (!foundArgumentsEnd) {
 			printError("Malformed operand in '" + text + "'");
-			return null;
 		}
 		
 		return text.substring(startIndex, endIndex);
@@ -226,7 +222,6 @@ public class ParseUtil {
 		
 		if (!foundArgumentsStart || startIndex >= chars.length) {
 			printError("Function is missing arguments in '" + text + "'");
-			return null;
 		}
 
 		int endIndex = startIndex;
@@ -258,22 +253,18 @@ public class ParseUtil {
 		
 		if (numParentheses > 0) {
 			printError("Missing closing parenthesis in '" + text + "'");
-			return null;
 		}
 		
 		if (numBrackets > 0) {
 			printError("Missing closing square brackets in '" + text + "'");
-			return null;
 		}
 		
 		if (isInsideString) {
 			printError("Missing closing quotation in '" + text + "'");
-			return null;
 		}
 		
 		if (!foundArgumentsEnd || endIndex >= chars.length) {
 			printError("Malformed arguments in '" + text + "'");
-			return null;
 		}
 		
 		return text.substring(startIndex, endIndex);
@@ -370,7 +361,6 @@ public class ParseUtil {
 		int parenthesisIndex = line.indexOf('(');
 		if (parenthesisIndex == -1) {
 			printError("Arguments missing in function call");
-			return null;
 		}
 		
 		String name = line.substring(0, parenthesisIndex).trim();
@@ -406,7 +396,6 @@ public class ParseUtil {
 							break;
 						} else {
 							printError("Malformed array syntax");
-							return null;
 						}
 					}
 					
@@ -495,7 +484,6 @@ public class ParseUtil {
 					
 					if (endIndex == -1) {
 						printError("Missing end bracket in expression '" + s + "'");
-						return null;
 					}
 					
 					// Separate the data into the individual arguments (the dimensions of the array)
@@ -540,7 +528,6 @@ public class ParseUtil {
 		
 		if (endIndex == -1) {
 			printError("Missing end bracket in expression '" + s + "'");
-			return null;
 		}
 		
 		// Separate the data into the individual arguments (the dimensions of the array)
@@ -581,7 +568,6 @@ public class ParseUtil {
 		
 		if (endIndex == -1) {
 			printError("Missing end bracket in expression '" + s + "'");
-			return null;
 		}
 		
 		// Separate the data into the individual arguments (the dimensions of the array)
@@ -627,15 +613,12 @@ public class ParseUtil {
 		
 		if (numParentheses != 0) {
 			printError("Missing parentheses in expression '" + s + "'");
-			return null;
 		}
 		if (numBrackets != 0) {
 			printError("Missing bracket in expression '" + s + "'");
-			return null;
 		}
 		if (isInString) {
 			printError("Missing quotation in expression '" + s + "'");
-			return null;
 		}
 		
 		commaIndices.add(s.length());
@@ -891,14 +874,23 @@ public class ParseUtil {
 	static String getOperatorFromList(String s, int index, String[] operators) {
 		
 		// Operators cannot be the first or last character on a line
-		if (index == 0 || index == s.length() - 1) {
+		if (index <= 0 || index >= s.length() - 1) {
 			return null;
 		}
 		
 		// Iterate over every binary operator in the given list
 		for (int j = 0; j < operators.length; j++) {
 			if (s.startsWith(operators[j], index)) {
-				return operators[j];
+				
+				// Only a valid operator if it is preceded with a non-operator symbol
+				char previousChar = s.charAt(index - 1);
+				if (!isOperator(previousChar)) {
+					// Only a valid operator if a non-operator symbol or end-of-line follows
+					if (index + operators[j].length() == s.length() ||
+							!isOperator(s.charAt(index + operators[j].length()))) {
+						return operators[j];
+					}
+				}
 			}
 		}
 		
@@ -1216,6 +1208,17 @@ public class ParseUtil {
 		return a >= 48 && a <= 57;
 	}
 	
+	// Return true if this character is some sort of operator symbol (i.e. =, +, -, ., *).
+	// All these characters must NOT be allowed in variable names or numeric literals.
+	static boolean isOperator(char a) {
+		return a == '=' || a == '+' || a == '-' || a == '%' ||
+				a == '$' || a == '#' || a == '@' || a == '!' ||
+				a == '~' || a == '`' || a == '*' || a == ':' ||
+				a == '&' || a == ';' || a == ',' || a == '?' ||
+				a == '/' || a == '|' || a == '^' || a == '<' ||
+				a == '>';
+	}
+	
 	// Parse an integer
 	static int parseInt(String val) {
 		try {
@@ -1276,23 +1279,6 @@ public class ParseUtil {
 	// Capitalize the first letter of a string
 	static String capitalize(String s) {
 		return s.substring(0, 1).toUpperCase() + s.substring(1);
-	}
-	
-	static void printError(String message) {
-		System.out.println(message);
-		if (Compiler.currentParsingLineNumber < Compiler.lines.length) {
-			System.out.println("'" + Compiler.lines[Compiler.currentParsingLineNumber] + "'");
-		}
-		System.out.println("(on line " + (Compiler.currentParsingLineNumber + 1) + ")");
-		
-		StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-		for (int i = 2; i < stackTrace.length-1; i++) {
-			print(stackTrace[i]);
-		}
-		/*
-		String lineNum = Thread.currentThread().getStackTrace()[2].toString();
-		print(lineNum.substring(lineNum.indexOf('(')));
-		*/
 	}
 	
 	static void print(Object o) {

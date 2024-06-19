@@ -1,6 +1,6 @@
 
-int[,] arr = int[8,9]
-arr[3,4]--
+int[] arr = int[8]
+arr[3] += 77
 
 /*
 for int i = 1, 5
@@ -27,7 +27,7 @@ for int i = 1, 20, 2
 [
 	int i = 1
 	loop
-		if (i >= (20)) OR (i < (1))
+		if (i >= (20)) || (i < (1))
 			break
 		]
 		print("HI")
@@ -55,7 +55,7 @@ for string str in arr
 ]
 //*/
 
-/* TODO c-like for loops not implemented yet
+/* TODO c-like for loops are not implemented yet
 for int i = 65, i > 4*4, i -= 1
 	print("HI")
 ]
@@ -103,7 +103,7 @@ print(3 + newMethod())
 Int newMethod()
 	print("Hello world!")
 ]
-*/
+//*/
 
 /*
 string[] arr = string[20]

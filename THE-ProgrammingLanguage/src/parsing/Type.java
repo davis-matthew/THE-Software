@@ -5,7 +5,9 @@ public enum Type {
 	ArrayBool, ArrayLong, ArrayInt, ArrayFloat, ArrayDouble, ArrayString, ArrayObject,
 	String, Object, Void;
 	
-	int dimensions; // For array type only
+	public int dimensions; // For array type only
+	
+	public boolean isPointer; // True if this is a pointer to this type
 	
 	private Type() {}
 	
@@ -120,6 +122,14 @@ public enum Type {
 			return true;
 		}
 		
+		if (isPointer != type.isPointer) {
+			return false;
+		}
+		
+		if (dimensions != type.dimensions) {
+			return false;
+		}
+		
 		if (this == Type.Int) {
 			if (type == Type.Double || type == Type.Float || type == Type.Long) {
 				return true;
@@ -139,15 +149,20 @@ public enum Type {
 	
 	@Override
 	public String toString() {
+		String pointerPrefix = "";
+		if (isPointer) {
+			pointerPrefix = "*";
+		}
+		
 		if (isArrayType()) {
-			String s = toArrayPrimitiveType().name().toLowerCase() + "[";
+			String s = pointerPrefix + toArrayPrimitiveType().name().toLowerCase() + "[";
 			for (int i = 0; i < dimensions - 1; i++) {
 				s += ",";
 			}
 			s += "]";
 			return s;
 		} else {
-			return this.name();
+			return pointerPrefix + this.name();
 		}
 	}
 }
