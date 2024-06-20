@@ -21,7 +21,7 @@ public enum InstructionType {
 	ArrayLength, // Read the length of an array
 	Break, // Instantly jump out of the end of the nearest loop
 	Continue, // Jump directly to the nearest loop header
-	If, ElseIf, Else, EndBlock, Loop, Enscope, FunctionDefinition;
+	If, ElseIf, Else, EndBlock, StartBlock, Loop, FunctionDefinition;
 	
 	// Return the programming language symbol for this instruction
 	public String toSymbolForm() {
@@ -85,7 +85,7 @@ public enum InstructionType {
 	
 	// Return true if this instruction restricts the scope of the contents
 	public boolean doesStartScope() {
-		return this == Enscope || this == FunctionDefinition || this == Loop ||
+		return this == StartBlock || this == FunctionDefinition || this == Loop ||
 				this == If || this == Else || this == ElseIf;
 	}
 	

@@ -126,7 +126,7 @@ public class Instruction {
 			s += ")";
 		}
 		
-		if (returnType != null && returnType != Type.Void) {
+		if (returnType != null && !returnType.isA(BaseType.Void)) {
 			s += "->" + returnType;
 		}
 		

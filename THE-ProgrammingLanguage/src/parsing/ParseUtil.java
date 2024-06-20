@@ -382,7 +382,7 @@ public class ParseUtil {
 			if (line.startsWith(dataTypes[i]) && line.length() > length) {
 				
 				if (line.charAt(length) == ' ') {
-					return new Object[] {Type.getTypeFromString(dataTypes[i]), length};
+					return new Object[] {new Type(dataTypes[i]), length};
 				} else if (line.charAt(length) == '[') { // This must be an array
 					// Determine the dimension of this array
 					int commaCount = 0;
@@ -400,8 +400,7 @@ public class ParseUtil {
 					}
 					
 					int dimension = commaCount + 1;
-					Type type = Type.getArrayTypeFromString(dataTypes[i]);
-					type.dimensions = dimension;
+					Type type = new Type(dataTypes[i], dimension);
 					return new Object[] {type, endIndex};
 				}
 			}
@@ -488,8 +487,9 @@ public class ParseUtil {
 					
 					// Separate the data into the individual arguments (the dimensions of the array)
 					String[] args = separateArguments(s.substring(length+1, endIndex));
+					final int dimensions = args.length;
 					
-					return new Object[] {Type.getArrayTypeFromString(dataTypes[i]), args};
+					return new Object[] {new Type(dataTypes[i], dimensions), args};
 				}
 			}
 		}

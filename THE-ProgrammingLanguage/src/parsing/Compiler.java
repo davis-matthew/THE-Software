@@ -13,7 +13,7 @@ import static parsing.ErrorHandler.*;
 
 // Created by Daniel Williams
 // Created on May 31, 2020
-// Last updated on May 27, 2024
+// Last updated on June 20, 2024
 
 // A fast programming language that maybe is good.
 
@@ -60,8 +60,7 @@ public class Compiler {
 		findFunctionCallReferences();
 		
 		// Replace all Reads followed by WriteToReference with a GetReference instruction.
-		// TODO need to make a "pointer" and "dimensioned" version of each type. Make make types classes instead of enums?
-		//ConvertRefWritesPass.convertReferenceWritesPass(instructions);
+		ConvertRefWritesPass.convertReferenceWritesPass(instructions);
 		
 		// Print out all of the instructions to the console
 		for (int i = 0; i < instructions.size(); i++) {
@@ -111,20 +110,20 @@ public class Compiler {
 			
 			instructions.add(instr);
 			
-		} else if (line.equals("[")) { // Enclosing scope (Enscope)
+		} else if (line.equals("[")) { // Start a deeper scope
 			
-			Instruction instr = new Instruction(InstructionType.Enscope);
-			instr.stringRepresentation = "enscope";
+			Instruction instr = new Instruction(InstructionType.StartBlock);
+			instr.stringRepresentation = "scope start";
 			instr.parentInstruction = parentInstruction;
 			instructions.add(instr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "for")) { // For-loop
 			
 			// This instruction restricts the scope of the whole for-loop and initialization
-			Instruction enscopeInstr = new Instruction(InstructionType.Enscope);
-			enscopeInstr.stringRepresentation = "for-loop enscope";
-			enscopeInstr.parentInstruction = parentInstruction;
-			instructions.add(enscopeInstr);
+			Instruction startBlockInstr = new Instruction(InstructionType.StartBlock);
+			startBlockInstr.stringRepresentation = "for-loop scope start";
+			startBlockInstr.parentInstruction = parentInstruction;
+			instructions.add(startBlockInstr);
 			
 			// Get the contents of the for-loop header
 			final int conditionsStartIndex = 3;
@@ -167,28 +166,27 @@ public class Compiler {
 				}
 				
 				String forEachVarTypeString = loopVarDeclarationString.substring(0, firstSpaceIndex);
-				Type forEachVarType = Type.getTypeFromString(forEachVarTypeString);
+				Type forEachVarType = new Type(forEachVarTypeString);
 				String forEachVarName = loopVarDeclarationString.substring(firstSpaceIndex).trim();
 				
 				// Try to find an existing variable in this scope with the same name
-				Variable existingVar = findVariableByName(enscopeInstr, forEachVarName);
+				Variable existingVar = findVariableByName(startBlockInstr, forEachVarName);
 				if (existingVar != null) {
 					printError("Variable '" + forEachVarName + "' has already been declared in this scope");
 				}
 				
 				// Try to find an existing variable in this scope with the same name
 				String arrayVarName = forEachArgs[1];
-				arrayVar = findVariableByName(enscopeInstr, arrayVarName);
+				arrayVar = findVariableByName(startBlockInstr, arrayVarName);
 				
 				// Make sure the array variable is an array type
-				if (!arrayVar.type.isArrayType()) {
+				if (!arrayVar.type.isArray) {
 					printError("'" + arrayVarName + "' must be an array type");
 				}
 				
 				// Make sure the array values may be cast to the reference variable type
-				if (!arrayVar.type.toArrayPrimitiveType().canImplicitlyCastTo(forEachVarType)) {
-					printError("Cannot implicitly cast from " + arrayVar.type.toArrayPrimitiveType() +
-							" to " + forEachVarType);
+				if (!arrayVar.type.getArrayContainedType().canImplicitlyCastTo(forEachVarType)) {
+					printError("Cannot implicitly cast from " + arrayVar.type.baseType + " to " + forEachVarType);
 				}
 				
 				loopBreakIfStatementString = "if " + loopVarName + " >= #" + arrayVarName;
@@ -206,7 +204,7 @@ public class Compiler {
 
 				// Get the type of variable that is being used to iterate
 				String loopVarTypeString = startBoundVariableString.substring(0, firstSpaceIndex);
-				Type varType = Type.getTypeFromString(loopVarTypeString);
+				Type varType = new Type(loopVarTypeString);
 				
 				// Make sure the loop variable is an integer type
 				if (!varType.isNumberType()) {
@@ -246,7 +244,7 @@ public class Compiler {
 			// This instruction precedes all content of the loop that is repeated.
 			Instruction loopStartLabel = new Instruction(InstructionType.Loop);
 			loopStartLabel.stringRepresentation = "for-loop start";
-			loopStartLabel.parentInstruction = enscopeInstr;
+			loopStartLabel.parentInstruction = startBlockInstr;
 			instructions.add(loopStartLabel);
 			
 			// Create the loop break condition.
@@ -556,7 +554,7 @@ public class Compiler {
 			
 			// Determine whether this is a variable, or function declaration
 			boolean isFunctionDeclaration = false;
-			if (varType == Type.Void || (varEndIndex < line.length() && line.charAt(varEndIndex) == '(')) {
+			if (varEndIndex < line.length() && line.charAt(varEndIndex) == '(') {
 				isFunctionDeclaration = true;
 			}
 			
@@ -678,7 +676,7 @@ public class Compiler {
 					}
 					
 					// If this is an array, then make sure the dimension matches
-					if (varType.isArrayType() && varType.dimensions != lastInstruction.argReferences.length) {
+					if (varType.isArray && varType.dimensions != lastInstruction.argReferences.length) {
 						printError("Unmatching array dimensions");
 					}
 					
@@ -725,7 +723,8 @@ public class Compiler {
 			
 			// We expect the last instruction from the left-hand-side to be a "Read" operation
 			if (lastInstructionFromLeftHand.instructionType != InstructionType.Read) {
-				printError("(Internal) Left-hand-side should end in a 'Read' instruction");
+				printError("Left-hand-side should end in a 'Read' instruction " +
+							"(not a " + lastInstructionFromLeftHand.instructionType + ")");
 			}
 			
 			final Type leftHandType = lastInstructionFromLeftHand.returnType;
@@ -915,7 +914,7 @@ public class Compiler {
 			// Handle overloaded binary operators depending on operand type
 			if (type == InstructionType.Add) {
 				// This must be a string concatenation
-				if (operandType1 == Type.String || operandType2 == Type.String) {
+				if (operandType1.isA(BaseType.String) || operandType2.isA(BaseType.String)) {
 					type = InstructionType.Concat;
 				}
 			}
@@ -1014,7 +1013,7 @@ public class Compiler {
 						// Recursively parse the expressions
 						Instruction lastInstruction = parseExpression(parentInstruction, dimensions[i]);
 						
-						if (lastInstruction.returnType != Type.Int) {
+						if (!lastInstruction.returnType.isA(BaseType.Int)) {
 							printError("Array dimension must be of type " + Type.Int);
 						}
 						
@@ -1052,7 +1051,7 @@ public class Compiler {
 					Instruction instr = new Instruction(InstructionType.Read);
 					instr.stringRepresentation = text;
 					instr.variableThatWasRead = var;
-					instr.returnType = var.type.toArrayPrimitiveType();
+					instr.returnType = new Type(var.type.baseType);
 					instr.parentInstruction = parentInstruction;
 					
 					// Find the all previous instructions that assigned this variable, and reference them
@@ -1068,7 +1067,7 @@ public class Compiler {
 						// Recursively parse the expressions
 						Instruction lastInstruction = parseExpression(parentInstruction, dimensions[i]);
 						
-						if (lastInstruction.returnType != Type.Int) {
+						if (!lastInstruction.returnType.isA(BaseType.Int)) {
 							printError("Array dimension must be of type " + Type.Int);
 						}
 						
@@ -1087,12 +1086,13 @@ public class Compiler {
 						printError("Undeclared variable '" + text + "'");
 					}
 					
-					// If this variable is a primitive type
 					Instruction instr;
-					if (var.type.isPrimitiveType()) {
-						instr = new Instruction(InstructionType.Read);
-					} else { // If it is an array, object, or structure type
+					
+					// If it is an array
+					if (var.type.isArray) {
 						instr = new Instruction(InstructionType.ReadBuiltInProperty);
+					} else { // If this is a primitive type
+						instr = new Instruction(InstructionType.Read);
 					}
 					
 					instr.stringRepresentation = text;
@@ -1121,212 +1121,232 @@ public class Compiler {
 	}
 	
 	// Return the return data type for the given instruction type and operands
-	static Type getReturnTypeFromInstructionAndOperands(InstructionType type, Type operandType1, Type operandType2) {
+	static Type getReturnTypeFromInstructionAndOperands(InstructionType instrType, Type op1, Type op2) {
 		
-		if (type == InstructionType.Add ||
-				type == InstructionType.Subtract ||
-				type == InstructionType.Mult ||
-				type == InstructionType.Divide ||
-				type == InstructionType.Power) {
+		if (instrType == InstructionType.Add ||
+				instrType == InstructionType.Subtract ||
+				instrType == InstructionType.Mult ||
+				instrType == InstructionType.Divide ||
+				instrType == InstructionType.Power) {
 			
-			if (operandType1 == Type.Int && operandType2 == Type.Int) {
+			if (op1.isArray || op1.isPointer()) {
+				printError("Cannot perform " + instrType.name() + " on " + op1);
+			}
+			if (op2.isArray || op2.isPointer()) {
+				printError("Cannot perform " + instrType.name() + " on " + op2);
+			}
+			
+			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
 				return Type.Int;
-			} else if (operandType1 == Type.Int && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Long) {
 				return Type.Long;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Int) {
 				return Type.Long;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Long) {
 				return Type.Long;
-			} else if (operandType1 == Type.Int && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Float) {
 				return Type.Float;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Int) {
 				return Type.Float;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Float) {
 				return Type.Float;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Float) {
 				return Type.Float;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Long) {
 				return Type.Float;
-			} else if (operandType1 == Type.Int && operandType2 == Type.Double) {
+			} else if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Double) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Int) {
 				return Type.Double;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Double) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Double) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Long) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Double) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Double) {
 				return Type.Double;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Double) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Double) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Float) {
 				return Type.Double;
 			}
 			
-			if (type == InstructionType.Add) {
-				printError("Addition cannot be performed on " + operandType1 + " and " + operandType2);
+			if (instrType == InstructionType.Add) {
+				printError("Addition cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Subtract) {
-				printError("Subtraction cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Subtract) {
+				printError("Subtraction cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Mult) {
-				printError("Multiplication cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Mult) {
+				printError("Multiplication cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Divide) {
-				printError("Division cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Divide) {
+				printError("Division cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Power) {
-				printError("Exponentiation cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Power) {
+				printError("Exponentiation cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (type == InstructionType.Modulo) {
 			
-			if (operandType1 == Type.Int && operandType2 == Type.Int) {
+		} else if (instrType == InstructionType.Modulo) {
+			
+			if (op1.isArray || op1.isPointer()) {
+				printError("Cannot perform " + instrType.name() + " on " + op1);
+			}
+			if (op2.isArray || op2.isPointer()) {
+				printError("Cannot perform " + instrType.name() + " on " + op2);
+			}
+			
+			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
 				return Type.Int;
-			} else if (operandType1 == Type.Int && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Long) {
 				return Type.Int;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Int) {
 				return Type.Long;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Long) {
 				return Type.Long;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Int) {
 				return Type.Float;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Float) {
 				return Type.Float;
-			} else if (operandType1 == Type.Float && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.Long) {
 				return Type.Float;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Int) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Double) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Double) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Float) {
 				return Type.Double;
-			} else if (operandType1 == Type.Double && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.Long) {
 				return Type.Double;
 			} else {
-				printError("Modulus cannot be performed on " + operandType1 + " and " + operandType2);
+				printError("Modulus cannot be performed on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (type == InstructionType.And || type == InstructionType.Or || type == InstructionType.Not) {
-			if (operandType1 == Type.Bool && operandType2 == Type.Bool) {
+		} else if (instrType == InstructionType.And ||
+				instrType == InstructionType.Or ||
+				instrType == InstructionType.Not) {
+			
+			if (op1.baseType == BaseType.Bool && op2.baseType == BaseType.Bool) {
 				return Type.Bool;
 			}
 			
-			if (type == InstructionType.And) {
-				printError("AND cannot be performed on " + operandType1 + " and " + operandType2);
+			if (instrType == InstructionType.And) {
+				printError("AND cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Or) {
-				printError("OR cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Or) {
+				printError("OR cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Not) {
-				printError("NOT cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Not) {
+				printError("NOT cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (type == InstructionType.BitAnd || type == InstructionType.BitOr || type == InstructionType.BitNot) {
-			if (operandType1 == Type.Int && operandType2 == Type.Int) {
+		} else if (instrType == InstructionType.BitAnd ||
+				instrType == InstructionType.BitOr ||
+				instrType == InstructionType.BitNot) {
+			
+			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
 				return Type.Int;
-			} else if (operandType1 == Type.Long && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.Long) {
 				return Type.Long;
 			}
 			
-			if (type == InstructionType.BitAnd) {
-				printError("Bitwise AND cannot be performed on " + operandType1 + " and " + operandType2);
+			if (instrType == InstructionType.BitAnd) {
+				printError("Bitwise AND cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.BitOr) {
-				printError("Bitwise OR cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.BitOr) {
+				printError("Bitwise OR cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.BitNot) {
-				printError("Bitwise NOT cannot be performed on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.BitNot) {
+				printError("Bitwise NOT cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (type == InstructionType.Concat) {
-			if (operandType1 == Type.String && operandType2 == Type.Double) {
+		} else if (instrType == InstructionType.Concat) {
+			if (op1.baseType == BaseType.String && op2.baseType == BaseType.Double) {
 				return Type.String;
-			} else if (operandType1 == Type.Double && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.String) {
 				return Type.String;
-			} else if (operandType1 == Type.String && operandType2 == Type.Float) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.Float) {
 				return Type.String;
-			} else if (operandType1 == Type.Float && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.Float && op2.baseType == BaseType.String) {
 				return Type.String;
-			} else if (operandType1 == Type.String && operandType2 == Type.Int) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.Int) {
 				return Type.String;
-			} else if (operandType1 == Type.Int && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.Int && op2.baseType == BaseType.String) {
 				return Type.String;
-			} else if (operandType1 == Type.String && operandType2 == Type.Long) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.Long) {
 				return Type.String;
-			} else if (operandType1 == Type.Long && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.Long && op2.baseType == BaseType.String) {
 				return Type.String;
-			} else if (operandType1 == Type.String && operandType2 == Type.Bool) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.Bool) {
 				return Type.String;
-			} else if (operandType1 == Type.Bool && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.Bool && op2.baseType == BaseType.String) {
 				return Type.String;
-			} else if (operandType1 == Type.String && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.String) {
 				return Type.String;
 			} else {
-				printError("Concatenation cannot be performed on " + operandType1 + " and " + operandType2);
+				printError("Concatenation cannot be performed on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (type == InstructionType.Equal || type == InstructionType.NotEqual) {
-			if (operandType1.isNumberType() && operandType2.isNumberType()) {
+		} else if (instrType == InstructionType.Equal || instrType == InstructionType.NotEqual) {
+			if (op1.isNumberType() && op2.isNumberType()) {
 				return Type.Bool;
-			} else if (operandType1 == Type.String && operandType2 == Type.String) {
+			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.String) {
 				return Type.Bool;
-			} else if (operandType1 == Type.Bool && operandType2 == Type.Bool) {
+			} else if (op1.baseType == BaseType.Bool && op2.baseType == BaseType.Bool) {
 				return Type.Bool;
 			} else {
-				printError("Equality cannot be tested on " + operandType1 + " and " + operandType2);
+				printError("Equality cannot be tested on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (type == InstructionType.RefEqual || type == InstructionType.RefNotEqual) {
-			if (operandType1 == Type.Void || operandType2 == Type.Void) {
-				printError("Reference equality cannot be tested on " + operandType1 + " and " + operandType2);
+		} else if (instrType == InstructionType.RefEqual || instrType == InstructionType.RefNotEqual) {
+			if (op1.baseType == BaseType.Void || op2.baseType == BaseType.Void) {
+				printError("Reference equality cannot be tested on " + op1 + " and " + op2);
 				return null;
 			} else {
 				return Type.Bool;
 			}
-		} else if (type == InstructionType.Less || type == InstructionType.Greater ||
-					type == InstructionType.LessEqual || type == InstructionType.GreaterEqual) {
-			if (operandType1.isNumberType() && operandType2.isNumberType()) {
+		} else if (instrType == InstructionType.Less || instrType == InstructionType.Greater ||
+					instrType == InstructionType.LessEqual || instrType == InstructionType.GreaterEqual) {
+			if (op1.isNumberType() && op2.isNumberType()) {
 				return Type.Bool;
 			}
 			
-			if (type == InstructionType.Less) {
-				printError("Less Than cannot be tested on " + operandType1 + " and " + operandType2);
+			if (instrType == InstructionType.Less) {
+				printError("Less Than cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.Greater) {
-				printError("Greater Than cannot be tested on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.Greater) {
+				printError("Greater Than cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.LessEqual) {
-				printError("Less or Equal To cannot be tested on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.LessEqual) {
+				printError("Less or Equal To cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (type == InstructionType.GreaterEqual) {
-				printError("Greater or Equal To cannot be tested on " + operandType1 + " and " + operandType2);
+			} else if (instrType == InstructionType.GreaterEqual) {
+				printError("Greater or Equal To cannot be tested on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (type == InstructionType.Print) {
+		} else if (instrType == InstructionType.Print) {
 			return Type.Void;
-		} else if (type == InstructionType.ArrayLength) {
-			if (operandType2 != null) {
+		} else if (instrType == InstructionType.ArrayLength) {
+			if (op2 != null) {
 				new Exception(InstructionType.ArrayLength + " second arg must be null");
 			}
-			if (operandType1.isArrayType()) {
+			if (op1.isArray) {
 				return Type.Int;
 			} else {
-				printError("ArrayLength cannot be determined for type " + operandType1);
+				printError("ArrayLength cannot be determined for type " + op1);
 			}
 		} else {
-			printError("Invalid return type: " + type);
-			return null;
+			printError("Invalid return type: " + instrType);
 		}
-
+		
 		new Exception("This code should not be reached").printStackTrace();
 		return null;
 	}

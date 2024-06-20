@@ -1,6 +1,9 @@
 
 int[] arr = int[8]
-arr[3] += 77
+arr[3] = 77
+
+int i = 0
+i = 1
 
 /*
 for int i = 1, 5
