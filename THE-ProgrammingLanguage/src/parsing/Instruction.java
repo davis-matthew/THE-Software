@@ -14,7 +14,7 @@ public class Instruction {
 	public final InstructionType instructionType;
 	
 	// The arguments or operands for this instruction, if any
-	public Instruction[] argReferences = null;
+	public Instruction[] args = null;
 	
 	// The actual value of this 'Given' instruction type
 	public Object primitiveGivenValue = null;
@@ -69,11 +69,11 @@ public class Instruction {
 	}
 	
 	// Add arguments to this instruction
-	public void setArgs(Instruction... args) {
-		if (argReferences != null) {
+	public void setArgs(Instruction... arguments) {
+		if (args != null) {
 			new Exception("Arguments already assigned for instruction:\n" + this).printStackTrace();
 		}
-		argReferences = args;
+		args = arguments;
 	}
 	
 	// Return true if this is an If, ElseIf, or Else
@@ -81,15 +81,6 @@ public class Instruction {
 		return instructionType == InstructionType.If ||
 				instructionType == InstructionType.ElseIf ||
 				instructionType == InstructionType.Else;
-	}
-	
-	public QuadInstruction toQuadIR() {
-		
-		
-		// TODO Convert to QuadIR here
-		
-		
-		return null;
 	}
 	
 	// Beautiful representation of this instruction
@@ -115,11 +106,11 @@ public class Instruction {
 		
 		s += instructionType;
 		
-		if (argReferences != null) {
+		if (args != null) {
 			s += "(";
-			for (int i = 0; i < argReferences.length; i++) {
-				s += argReferences[i].returnType;
-				if (i != argReferences.length-1) {
+			for (int i = 0; i < args.length; i++) {
+				s += args[i].returnType + " " + args[i].id;
+				if (i != args.length-1) {
 					s += ", ";
 				}
 			}
@@ -128,17 +119,6 @@ public class Instruction {
 		
 		if (returnType != null && !returnType.isA(BaseType.Void)) {
 			s += "->" + returnType;
-		}
-		
-		if (argReferences != null) {
-			s += " [args ";
-			for (int i = 0; i < argReferences.length; i++) {
-				s += argReferences[i].id;
-				if (i != argReferences.length-1) {
-					s += ", ";
-				}
-			}
-			s += "]";
 		}
 		
 		if (callFunctionReference != null) {

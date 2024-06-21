@@ -9,12 +9,12 @@ public enum InstructionType {
 	Less, Greater, LessEqual, GreaterEqual, Equal, NotEqual, RefEqual, RefNotEqual,
 	Call,
 	Print, // Print to the "best" console? stdout?
-	Read, // Read a from memory
+	Read, // Read a from memory (base type or array)
 	WriteToReference, // Write to a reference to a variable or memory
 	GetReference, // Get a pointer to a variable/array/struct
 	ReadBuiltInProperty, // Read a property of an object, such as length of an array or other special property.
 	Given, // Load a value from program memory (like a constant)
-	Reassign, // Change the value of an existing variable
+	Reassign, // Change the value of an existing variable (or index in an array)
 	Alloc, // Allocate memory, but without assigning it to any variable
 	Initialize, // Initialize a new variable and assign it to something
 	Declare, // Declare the scope of a variable without assigning it to anything???

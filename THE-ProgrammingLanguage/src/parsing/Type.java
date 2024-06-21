@@ -15,12 +15,12 @@ public class Type {
 	public static final Type String = new Type(BaseType.String);
 	public static final Type Void = new Type(BaseType.Void);
 	
-	// The fundamental type of this (possibly) composite type
-	public final BaseType baseType;
 	
+	public final BaseType baseType; // The fundamental type of this (possibly) composite type
 	public final int dimensions;	// For array type only
 	public final int pointerDepth;	// How many pointers deep is this? (0 = primitive, 1 = *int, 2 = **int, 3 = ***int, etc.)
 	public final boolean isArray;	// True if this is an array of the baseType
+	public final boolean isBaseType; // True if this is just a regular value, not an array or pointer.
 	
 	// Instantiate a basic type
 	public Type(BaseType baseType) {
@@ -28,6 +28,7 @@ public class Type {
 		this.dimensions = 0;
 		this.pointerDepth = 0;
 		this.isArray = false;
+		this.isBaseType = true;
 	}
 	
 	// Instantiate a type from the string BaseType
@@ -36,6 +37,7 @@ public class Type {
 		this.dimensions = 0;
 		this.pointerDepth = 0;
 		this.isArray = false;
+		this.isBaseType = true;
 	}
 	
 	// Instantiate an array type
@@ -44,6 +46,11 @@ public class Type {
 		this.dimensions = dimensions;
 		this.pointerDepth = 0;
 		this.isArray = true;
+		this.isBaseType = false;
+		
+		if (dimensions <= 0) {
+			new Exception("Non positive-dimension array disallowed!").printStackTrace();
+		}
 	}
 
 	// Instantiate an array type from the string BaseType
@@ -52,6 +59,11 @@ public class Type {
 		this.dimensions = dimensions;
 		this.pointerDepth = 0;
 		this.isArray = true;
+		this.isBaseType = false;
+		
+		if (dimensions <= 0) {
+			new Exception("Non positive-dimension array disallowed!").printStackTrace();
+		}
 	}
 	
 	// Instantiate a type with all available parameters
@@ -60,6 +72,11 @@ public class Type {
 		this.dimensions = dimensions;
 		this.pointerDepth = pointerDepth;
 		this.isArray = isArray;
+		this.isBaseType = !isArray && pointerDepth == 0;
+		
+		if (isArray && dimensions <= 0) {
+			new Exception("Non positive-dimension array disallowed!").printStackTrace();
+		}
 	}
 	
 	public boolean isPointer() {

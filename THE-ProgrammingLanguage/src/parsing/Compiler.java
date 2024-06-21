@@ -7,7 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 
-import passes.ConvertRefWritesPass;
+import passes.ArrayWritesToRefPass;
+import passes.ConvertToQuadPass;
 
 import static parsing.ErrorHandler.*;
 
@@ -59,16 +60,19 @@ public class Compiler {
 		// Find which function each function call was referencing
 		findFunctionCallReferences();
 		
-		// Replace all Reads followed by WriteToReference with a GetReference instruction.
-		ConvertRefWritesPass.convertReferenceWritesPass(instructions);
+		// Replace all Reassign-to-arrays to WriteToReferences
+		ArrayWritesToRefPass.convertReferenceWritesPass(instructions);
 		
 		// Print out all of the instructions to the console
 		for (int i = 0; i < instructions.size(); i++) {
 			print(instructions.get(i));
 		}
+		print("");
+
+		// Convert all instructions to QuadIR
+		ArrayList<QuadInstruction> quadInstructions = ConvertToQuadPass.convertToQuadInstructions(instructions);
 		
-		print("\nQuad instructions:");
-		ArrayList<QuadInstruction> quadInstructions = convertToQuadInstructions();
+		print("Quad instructions:");
 		for (int i = 0; i < quadInstructions.size(); i++) {
 			print(quadInstructions.get(i));
 		}
@@ -531,9 +535,6 @@ public class Compiler {
 			
 			openingBlockInstr.endInstruction = endInstr;
 			
-			// TODO Throw an error if this was the end of a do-while loop.
-			// TODO do-while loops need to be closed with "] while (condition)"
-			
 		} else if (ParseUtil.getFirstDataType(line) != null) { // If this is a declaration of some sort
 			Object[] typeData = ParseUtil.getFirstDataType(line);
 			Type varType = (Type)typeData[0];
@@ -630,7 +631,7 @@ public class Compiler {
 				}
 				routineInstr.setArgs(args);
 				
-			} else {
+			} else { // Not a function declaration
 				
 				// Try to find an existing variable in this scope that is in naming conflict with this one
 				Variable existingVar = findVariableByName(parentInstruction, varName);
@@ -676,12 +677,12 @@ public class Compiler {
 					}
 					
 					// If this is an array, then make sure the dimension matches
-					if (varType.isArray && varType.dimensions != lastInstruction.argReferences.length) {
+					if (varType.isArray && varType.dimensions != lastInstruction.args.length) {
 						printError("Unmatching array dimensions");
 					}
 					
 					Instruction instr = new Instruction(InstructionType.Initialize);
-					instr.stringRepresentation = expressionContent;
+					instr.stringRepresentation = varType + " " + varName + " = " + expressionContent;
 					instr.setArgs(lastInstruction);
 					instr.variableThatWasChanged = var;
 					instr.parentInstruction = parentInstruction;
@@ -701,7 +702,7 @@ public class Compiler {
 			}
 			
 			final String assignmentOp = assignmentInfo.string;
-			final String leftHandString = line.substring(0, assignmentInfo.startIndex);
+			final String leftHandString = line.substring(0, assignmentInfo.startIndex).trim();
 			final String rightHandString = line.substring(assignmentInfo.endIndex);
 			
 			Instruction lastInstructionFromRightHand = null;
@@ -729,6 +730,13 @@ public class Compiler {
 			
 			final Type leftHandType = lastInstructionFromLeftHand.returnType;
 			
+			// The last instruction was a Read, so get the variable that was read
+			final Variable varToBeModified = lastInstructionFromLeftHand.variableThatWasRead;
+			
+			if (varToBeModified == null) {
+				printError("Read instruction missing variable!");
+			}
+			
 			// If this is an assignment (by value)
 			if (assignmentOp.equals("=")) {
 				
@@ -739,11 +747,40 @@ public class Compiler {
 					printError("Cannot implicitly cast from " + rightHandType + " to " + leftHandType);
 				}
 				
-				Instruction assignment = new Instruction(InstructionType.WriteToReference);
-				assignment.stringRepresentation = line;
-				assignment.setArgs(lastInstructionFromLeftHand, lastInstructionFromRightHand);
-				assignment.parentInstruction = parentInstruction;
-				instructions.add(assignment);
+				// Since we are assigning over the old value without reading it, we can simply
+				// delete the previous Read instruction that was created.
+				if (instructions.get(instructions.size() - 1).instructionType != InstructionType.Read) {
+					printError("Last generated instruction is expected to be a 'Read'");
+				}
+				instructions.remove(instructions.size() - 1);
+				
+				// If we are modifying a base type, such as an int or bool
+				if (varToBeModified.type.isBaseType) {
+					
+					Instruction assignment = new Instruction(InstructionType.Reassign);
+					assignment.stringRepresentation = line;
+					assignment.variableThatWasChanged = varToBeModified;
+					assignment.setArgs(lastInstructionFromRightHand);
+					assignment.parentInstruction = parentInstruction;
+					instructions.add(assignment);
+					
+				} else if (varToBeModified.type.isArray) { // Write to a value of an array
+					
+					Instruction assignment = new Instruction(InstructionType.Reassign);
+					assignment.stringRepresentation = line;
+					assignment.variableThatWasChanged = varToBeModified;
+					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
+					args[0] = lastInstructionFromRightHand;
+					for (int i = 1; i < args.length; i++) {
+						args[i] = lastInstructionFromLeftHand.args[i - 1];
+					}
+					assignment.setArgs(args);
+					assignment.parentInstruction = parentInstruction;
+					instructions.add(assignment);
+					
+				} else {
+					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
+				}
 				
 			} else if (assignmentOp.equals("++") || assignmentOp.equals("--")) { // Increment/Decrement
 				
@@ -768,16 +805,39 @@ public class Compiler {
 				addOrSubtract.stringRepresentation = leftHandString + " " + incrementType.toSymbolForm() + " 1";
 				addOrSubtract.setArgs(lastInstructionFromLeftHand, one);
 				addOrSubtract.returnType = getReturnTypeFromInstructionAndOperands(
-							incrementType, lastInstructionFromLeftHand.returnType, one.returnType);
+							incrementType, leftHandType, one.returnType);
 				addOrSubtract.parentInstruction = parentInstruction;
 				instructions.add(addOrSubtract);
 				
-				Instruction writeToFirstHalf = new Instruction(InstructionType.WriteToReference);
-				writeToFirstHalf.stringRepresentation = leftHandString.trim() + " = " +
-									addOrSubtract.stringRepresentation;
-				writeToFirstHalf.setArgs(lastInstructionFromLeftHand, addOrSubtract);
-				writeToFirstHalf.parentInstruction = parentInstruction;
-				instructions.add(writeToFirstHalf);
+				// If we are modifying a base type, such as an int or bool
+				if (varToBeModified.type.isBaseType) {
+					
+					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
+					writeToFirstHalf.stringRepresentation = leftHandString.trim() + " = " +
+										addOrSubtract.stringRepresentation;
+					writeToFirstHalf.variableThatWasChanged = varToBeModified;
+					writeToFirstHalf.setArgs(addOrSubtract);
+					writeToFirstHalf.parentInstruction = parentInstruction;
+					instructions.add(writeToFirstHalf);
+					
+				} else if (varToBeModified.type.isArray) { // Write to a value of an array
+					
+					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
+					writeToFirstHalf.stringRepresentation = leftHandString.trim() + " = " +
+										addOrSubtract.stringRepresentation;
+					writeToFirstHalf.variableThatWasChanged = varToBeModified;
+					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
+					args[0] = addOrSubtract;
+					for (int i = 1; i < args.length; i++) {
+						args[i] = lastInstructionFromLeftHand.args[i - 1];
+					}
+					writeToFirstHalf.setArgs(args);
+					writeToFirstHalf.parentInstruction = parentInstruction;
+					instructions.add(writeToFirstHalf);
+					
+				} else {
+					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
+				}
 				
 			} else if (assignmentOp.equals("+=")  || assignmentOp.equals("-=") || // If this is a shorthand operator
 					   assignmentOp.equals("/=")  || assignmentOp.equals("*=") ||
@@ -789,21 +849,45 @@ public class Compiler {
 					printError("Operator " + assignmentOp + " must be followed by an expression");
 				}
 				
+				final Type rightHandType = lastInstructionFromRightHand.returnType;
+				
 				InstructionType incrementType = getInstructionTypeFromOperator(assignmentOp);
 				
 				Instruction binaryOp = new Instruction(incrementType);
-				binaryOp.stringRepresentation = leftHandString + incrementType.toSymbolForm() + rightHandString;
+				binaryOp.stringRepresentation = leftHandString + " " + incrementType.toSymbolForm() + rightHandString;
 				binaryOp.setArgs(lastInstructionFromLeftHand, lastInstructionFromRightHand);
 				binaryOp.returnType = getReturnTypeFromInstructionAndOperands(
-							incrementType, lastInstructionFromLeftHand.returnType, lastInstructionFromRightHand.returnType);
+									incrementType, leftHandType, rightHandType);
 				binaryOp.parentInstruction = parentInstruction;
 				instructions.add(binaryOp);
 				
-				Instruction writeToFirstHalf = new Instruction(InstructionType.WriteToReference);
-				writeToFirstHalf.stringRepresentation = leftHandString.trim();
-				writeToFirstHalf.setArgs(lastInstructionFromLeftHand, binaryOp);
-				writeToFirstHalf.parentInstruction = parentInstruction;
-				instructions.add(writeToFirstHalf);
+				// If we are modifying a base type, such as an int or bool
+				if (varToBeModified.type.isBaseType) {
+					
+					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
+					writeToFirstHalf.stringRepresentation = leftHandString.trim();
+					writeToFirstHalf.variableThatWasChanged = varToBeModified;
+					writeToFirstHalf.setArgs(binaryOp);
+					writeToFirstHalf.parentInstruction = parentInstruction;
+					instructions.add(writeToFirstHalf);
+					
+				} else if (varToBeModified.type.isArray) { // Write to a value of an array
+					
+					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
+					writeToFirstHalf.stringRepresentation = leftHandString.trim();
+					writeToFirstHalf.variableThatWasChanged = varToBeModified;
+					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
+					args[0] = binaryOp;
+					for (int i = 1; i < args.length; i++) {
+						args[i] = lastInstructionFromLeftHand.args[i - 1];
+					}
+					writeToFirstHalf.setArgs(args);
+					writeToFirstHalf.parentInstruction = parentInstruction;
+					instructions.add(writeToFirstHalf);
+					
+				} else {
+					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
+				}
 				
 			} else {
 				printError("Invalid assignment operator");
@@ -1476,9 +1560,9 @@ public class Compiler {
 	// Return the instruction that declared the routine of the given name and argument types
 	static Instruction findFunctionByNameAndArgs(Instruction instr) {
 		
-		Type[] argTypes = new Type[instr.argReferences.length];
+		Type[] argTypes = new Type[instr.args.length];
 		for (int j = 0; j < argTypes.length; j++) {
-			argTypes[j] = instr.argReferences[j].returnType;
+			argTypes[j] = instr.args[j].returnType;
 		}
 		
 		Instruction parentInstr = instr.parentInstruction;
@@ -1776,7 +1860,7 @@ public class Compiler {
 					
 					if (currentInstr.instructionType == InstructionType.Break ||
 							currentInstr.instructionType == InstructionType.Continue) {
-						if (currentInstr.argReferences[0] == currentParent) {
+						if (currentInstr.args[0] == currentParent) {
 							// A possible break was found before the current instruction.
 							// Therefore it may not have been executed.
 							return false;
@@ -1878,18 +1962,6 @@ public class Compiler {
 			return null;
 		}
 		return parent;
-	}
-	
-	// Convert all the instructions into QuadInstructions
-	static ArrayList<QuadInstruction> convertToQuadInstructions() {
-		ArrayList<QuadInstruction> quadInstructions = new ArrayList<QuadInstruction>();
-		for (int i = 0; i < instructions.size(); i++) {
-			QuadInstruction newQuadInstruction = instructions.get(i).toQuadIR();
-			if (newQuadInstruction != null) {
-				quadInstructions.add(newQuadInstruction);
-			}
-		}
-		return quadInstructions;
 	}
 	
 	// Load some text from a file
