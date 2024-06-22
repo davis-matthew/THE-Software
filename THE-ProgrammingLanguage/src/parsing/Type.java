@@ -1,5 +1,7 @@
 package parsing;
 
+import static parsing.ErrorHandler.*;
+
 // This class stores information about a particular "type" of a variable, array, etc.
 // This may be a primitive type (int, bool, etc.), or
 // it may be a more complex type (*int, bool[4,5], or even ***string[4,4,6]).
@@ -31,13 +33,57 @@ public class Type {
 		this.isBaseType = true;
 	}
 	
-	// Instantiate a type from the string BaseType
+	// Instantiate a type from the given string.
+	// For example ***int[,,] or just bool
 	public Type(String s) {
-		this.baseType = getBaseTypeFromString(s);
-		this.dimensions = 0;
-		this.pointerDepth = 0;
-		this.isArray = false;
-		this.isBaseType = true;
+		
+		int baseTypeEndIndex = 0;
+		while (baseTypeEndIndex < s.length() && ParseUtil.isLetter(s.charAt(baseTypeEndIndex))) {
+			baseTypeEndIndex++;
+		}
+		
+		String baseTypeString = s.substring(0, baseTypeEndIndex);
+		this.baseType = getBaseTypeFromString(baseTypeString);
+		
+		// Compute the pointer depth (number of * after the base type).
+		int p = baseTypeEndIndex;
+		while (p < s.length() && s.charAt(p) == '*') {
+			p++;
+		}
+		this.pointerDepth = p - baseTypeEndIndex;
+		
+		// Compute the array dimensions
+		if (p < s.length() && s.charAt(p) == '[') {
+			p++;
+			int dims = 1;
+			boolean didEndWithBracket = false;
+			for (; p < s.length(); p++) {
+				char c = s.charAt(p);
+				if (c == ',') {
+					dims++;
+				} else if (c == ' ') {
+					// Spaces are fine in array type-declarations
+				} else if (c == ']') {
+					// Good
+					didEndWithBracket = true;
+					break;
+				} else {
+					printError("Malformed array type: '" + s + "'");
+				}
+			}
+			
+			if (!didEndWithBracket) {
+				printError("Array type missing closing bracket: '" + s + "'");
+			}
+			
+			this.dimensions = dims;
+			this.isArray = true;
+		} else {
+			this.dimensions = 0;
+			this.isArray = false;
+		}
+		
+		this.isBaseType = (this.pointerDepth == 0) && !isArray;
 	}
 	
 	// Instantiate an array type
@@ -199,11 +245,12 @@ public class Type {
 	@Override
 	public String toString() {
 		String s = "";
+		
+		s += baseType.name().toLowerCase();
+		
 		for (int i = 0; i < pointerDepth; i++) {
 			s += "*";
 		}
-		
-		s += baseType.name().toLowerCase();
 		
 		if (isArray) {
 			s += "[";

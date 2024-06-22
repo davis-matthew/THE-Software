@@ -354,18 +354,110 @@ public class ParseUtil {
 		return false;
 	}
 	
-	// Return the name of this function and the argument string that goes with it
-	static String[] getFunctionNameAndArgs(String line) {
+	// Return the index of the start of the function's name...
+	// if this line looks like a function declaration.
+	// Otherwise, return -1.
+	static int findFunctionDeclarationNameStartIndex(String line) {
+		
+		int i = 0;
+		
+		// Scan past the type string
+		for (; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (i > 0 && (c == '[' || c == ']' || c == ' ')) {
+				break;
+			}
+			if (!isLetter(c) && !isDigit(c)) {
+				return -1;
+			}
+		}
+		
+		// Scan past the array brackets and spaces
+		int bracketDepth = 0;
+		for (; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (c == '[') {
+			    bracketDepth++;
+			} else if (c == ']') {
+			    bracketDepth--;
+			}
+			
+			if (bracketDepth <= 0) {
+    			if (c == ' ') {
+    			    break;
+    			}
+			}
+		}
+		
+		// Scan past any spaces
+		for (; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (c != ' ') {
+				break;
+			}
+		}
+		
+		// Scan through the function name
+		final int functionNameStartIndex = i;
+		boolean foundFunctionName = false;
+		for (; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (c == '(' || c == ' ') {
+				break;
+			}
+			if (isLetter(c) || isDigit(c)) {
+			    foundFunctionName = true;
+			} else {
+				return -1;
+			}
+		}
+		
+		// Need to have at least one letter in the function's name
+		if (!foundFunctionName) {
+		    return -1;
+		}
+		
+		// Scan past any more spaces
+		for (; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (c != ' ') {
+				break;
+			}
+		}
+		
+		// Out of bounds
+		if (i >= line.length()) {
+			return -1;
+		}
+		
+		// This really needs to be an open-parenthesis now.
+		if (line.charAt(i) == '(') {
+			return functionNameStartIndex;
+		}
+		
+		return -1;
+	}
+	
+	// Return the name of this function and the argument string that goes with it.
+	// Index 0 is the name, index 1 is the arguments.
+	static String[] getFunctionNameAndArgs(String s) {
 		// Find the first opening parenthesis
 		
-		int parenthesisIndex = line.indexOf('(');
+		int parenthesisIndex = s.indexOf('(');
 		if (parenthesisIndex == -1) {
 			printError("Arguments missing in function call");
 		}
 		
-		String name = line.substring(0, parenthesisIndex).trim();
+		// Find the last space before the parenthesisIndex
+		int nameStartIndex = parenthesisIndex - 1;
+		while (nameStartIndex >= 0 && s.charAt(nameStartIndex) != ' ') {
+			nameStartIndex--;
+		}
+		nameStartIndex++;
 		
-		String args = getFunctionArguments(line, parenthesisIndex);
+		String name = s.substring(nameStartIndex, parenthesisIndex).trim();
+		
+		String args = getFunctionArguments(s, parenthesisIndex);
 		
 		if (args != null) {
 			return new String[] {name, args};
@@ -375,33 +467,27 @@ public class ParseUtil {
 	
 	// Return which data type this line starts with, if any.
 	// Also return the end index of this type-string.
-	static Object[] getFirstDataType(String line) {
+	static TypeAndEnd getFirstDataType(String line) {
+		
 		for (int i = 0; i < dataTypes.length; i++) {
 			int length = dataTypes[i].length();
 			
 			if (line.startsWith(dataTypes[i]) && line.length() > length) {
 				
 				if (line.charAt(length) == ' ') {
-					return new Object[] {new Type(dataTypes[i]), length};
+					return new TypeAndEnd(new Type(dataTypes[i]), length);
 				} else if (line.charAt(length) == '[') { // This must be an array
-					// Determine the dimension of this array
-					int commaCount = 0;
 					int endIndex = 0;
 					
-					for (int j = length+1; j < line.length(); j++) {
-						if (line.charAt(j) == ',') {
-							commaCount++;
-						} else if (line.charAt(j) == ']') {
-							endIndex = j+1;
+					for (int j = length + 1; j < line.length(); j++) {
+						if (line.charAt(j) == ']') {
+							endIndex = j + 1;
 							break;
-						} else {
-							printError("Malformed array syntax");
 						}
 					}
-					
-					int dimension = commaCount + 1;
-					Type type = new Type(dataTypes[i], dimension);
-					return new Object[] {type, endIndex};
+					String typeString = line.substring(0, endIndex);
+					Type type = new Type(typeString);
+					return new TypeAndEnd(type, endIndex);
 				}
 			}
 		}
@@ -423,7 +509,7 @@ public class ParseUtil {
 		return false;
 	}
 	
-	// Return true if this is (probably) an array reference (read)
+	// Return true if this is (probably) an array reference (Read)
 	static boolean isArrayReference(String s) {
 		// Find the first opening bracket
 		for (int i = 1; i < s.length()-1; i++) {
@@ -463,7 +549,7 @@ public class ParseUtil {
 					int numBrackets = 1;
 					
 					// Find the next matching closing bracket
-					for (int j = length+1; j < s.length(); j++) {
+					for (int j = length+1; j < s.length(); j++) { // TODO this bracket handling logic is wrong.
 						if (s.charAt(j) == '[') {
 							numBrackets++;
 						} else if (s.charAt(j) == ']') {
@@ -773,7 +859,7 @@ public class ParseUtil {
 	}
 	
 	// Replace the string with the new string, but avoid it between quotation marks.
-	// If 'wholeWord' is true, then then reject matches embedded between other letters
+	// If 'wholeWord' is true, then reject matches embedded between other letters
 	static String replaceOutsideLiteral(String original, String old, String rep, boolean wholeWord) {
 		boolean isInLiteral = false;
 		outer:
@@ -1303,6 +1389,17 @@ class StringStartEnd {
 	@Override
 	public String toString() {
 		return "'" + string + "' [" + startIndex + ", " + endIndex + "]";
+	}
+}
+
+// Holds a Type, and the end-index of this type in a parsed string
+class TypeAndEnd {
+	final Type type;
+	final int endIndex;
+	
+	public TypeAndEnd(Type type, int endIndex) {
+		this.type = type;
+		this.endIndex = endIndex;
 	}
 }
 

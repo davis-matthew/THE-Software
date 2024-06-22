@@ -1,9 +1,12 @@
 
+//*
 int[] arr = int[8]
 int a = 0
 arr[6] = 77
 a = 2
 arr[a] = 66
+print(arr[6])
+//*/
 
 /*
 for int i = 1, 5
@@ -101,10 +104,11 @@ while true
 //*/
 
 /*
-print(3 + newMethod())
+print(3 + myFunction(1, "num="))
 
-Int newMethod()
-	print("Hello world!")
+//*
+int myFunction(int x, string str)
+	print("Hello")
 ]
 //*/
 
@@ -124,7 +128,7 @@ void main(string[] args)
 	int n = #arr
 	int x = 10
 	int result = binarySearch(arr, 0, n - 1, x)
-	if result == -1
+	if result = -1
 		print("Not found")
 	else
 		print("Found at " + result)
@@ -139,7 +143,7 @@ int binarySearch(int[] arr, int lower, int upper, int x)
 			return binarySearch(arr, lower, mid - 1, x)
 		elseif arr[mid] < x
 			return binarySearch(arr, mid + 1, upper, x)
-		else arr[mid] == x
+		else arr[mid] = x
 			return mid
 		]
 	]
@@ -165,7 +169,7 @@ int binarySearch(int[] arr, int x)
 	while l <= r
 		int m = l + (r - l) / 2
 		
-		if arr[m] == x
+		if arr[m] = x
 			return m
 		]
 		
@@ -212,7 +216,7 @@ string[] arr = string[20]
 		
 		// Code here
 		
-		i = i + 1
+		i++
 	]
 ]
 
@@ -230,7 +234,7 @@ if step >= 0
 		
 		// Code here
 		
-		i = i + step
+		i += step
 	]
 else
 	loop
@@ -240,7 +244,7 @@ else
 		
 		// Code here
 		
-		i = i + step
+		i += step
 	]
 ]
 
@@ -249,7 +253,7 @@ for int i = 100, 0, -1
 	print(i)
 ]
 
-for int i=0, 100
+for int i = 0, 100
 	arr[i]
 ]
 

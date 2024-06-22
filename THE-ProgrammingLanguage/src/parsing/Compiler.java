@@ -32,6 +32,8 @@ public class Compiler {
 	// List of literal instructions from the source code to be parsed
 	static String[] lines = null;
 	
+	static ArrayList<Function> functions;
+	
 	// Whether to view debug printing or not
 	static final boolean debugPrintOn = true;
 	
@@ -43,7 +45,12 @@ public class Compiler {
 		lines = ParseUtil.stripComments(lines);
 		
 		// Estimate the number of instructions in this program
-		instructions = new ArrayList<Instruction>(lines.length * 2 + 10);
+		instructions = new ArrayList<Instruction>();
+		functions = new ArrayList<Function>();
+		
+		// Find all functions defined in this file (and put them in 'functions' ArrayList)
+		currentParsingLineNumber = 0;
+		findAllDeclaredFunctions();
 		
 		// Parse all the lines in the program
 		currentParsingLineNumber = 0;
@@ -56,9 +63,6 @@ public class Compiler {
 		if (lines.length > currentParsingLineNumber) {
 			printError("Extra ']' in program");
 		}
-		
-		// Find which function each function call was referencing
-		findFunctionCallReferences();
 		
 		// Replace all Reassign-to-arrays to WriteToReferences
 		ArrayWritesToRefPass.convertReferenceWritesPass(instructions);
@@ -536,9 +540,10 @@ public class Compiler {
 			openingBlockInstr.endInstruction = endInstr;
 			
 		} else if (ParseUtil.getFirstDataType(line) != null) { // If this is a declaration of some sort
-			Object[] typeData = ParseUtil.getFirstDataType(line);
-			Type varType = (Type)typeData[0];
-			int typeEndIndex = (int)typeData[1];
+			
+			TypeAndEnd typeData = ParseUtil.getFirstDataType(line);
+			Type varType = typeData.type;
+			int typeEndIndex = typeData.endIndex;
 			
 			// Make sure there is a space after the variable type
 			if (line.charAt(typeEndIndex) != ' ') {
@@ -574,11 +579,11 @@ public class Compiler {
 				String[] paramNames = new String[params.length];
 				
 				for (int i = 0; i < params.length; i++) {
-					Object[] data = ParseUtil.getFirstDataType(params[i]);
+					TypeAndEnd data = ParseUtil.getFirstDataType(params[i]);
 					if (data != null) {
-						paramTypes[i] = (Type)data[0];
-						int index = (int)data[1];
-						paramNames[i] = params[i].substring(index).trim();
+						paramTypes[i] = data.type;
+						int endIndex = data.endIndex;
+						paramNames[i] = params[i].substring(endIndex).trim();
 					} else {
 						printError("Invalid parameter declaration or type in '" + params[i] + "'");
 					}
@@ -590,27 +595,18 @@ public class Compiler {
 				}
 				
 				// Create the routine signature
-				Function routine = new Function(varName, new Type[]{varType}, paramTypes);
+				Function function = null; // TODO find a reference to the original function from the list
 				
 				// Try to find an existing variable in this scope that is in naming conflict with this one
-				boolean foundConflict = findConflictingFunction(parentInstruction, routine);
+				boolean foundConflict = findConflictingFunction(parentInstruction, function);
 				if (foundConflict) {
 					printError("Function '" + varName + "' has already been declared in this scope");
 				}
 				
-				String argTypesString = "";
-				for (int j = 0; j < paramTypes.length; j++) {
-					argTypesString += paramTypes[j];
-					if (j != paramTypes.length-1) {
-						argTypesString += ", ";
-					}
-				}
-				
 				// Create the routine definition
 				Instruction routineInstr = new Instruction(InstructionType.FunctionDefinition);
-				routineInstr.stringRepresentation = varName + "(" + argTypesString + ")";
-				routineInstr.functionThatWasDefined = routine;
-				routineInstr.routineName = varName;
+				routineInstr.stringRepresentation = line;
+				routineInstr.functionThatWasDefined = function;
 				routineInstr.parentInstruction = parentInstruction;
 				routineInstr.returnType = varType; // TODO add multiple returns
 				instructions.add(routineInstr);
@@ -624,6 +620,7 @@ public class Compiler {
 					Instruction instr = new Instruction(InstructionType.Declare);
 					instr.stringRepresentation = var.type + " " + var.name;
 					instr.variableThatWasChanged = var;
+					instr.returnType = var.type;
 					instr.parentInstruction = routineInstr;
 					instructions.add(instr);
 					
@@ -895,53 +892,8 @@ public class Compiler {
 			
 		} else if (ParseUtil.isFunctionCall(line)) { // If this is a function call alone on a line
 			
-			String[] data = ParseUtil.getFunctionNameAndArgs(line);
-			String methodName = null;
-			String methodArgString = null;
-			if (data != null) {
-				methodName = data[0];
-				methodArgString = data[1];
-			}
+			parseFunctionCall(parentInstruction, line, true);
 			
-			// Make sure there aren't excess characters at the end of this line
-			ParseUtil.checkForExcessCharacters(line, methodArgString);
-			
-			String[] args = ParseUtil.separateArguments(methodArgString);
-			
-			// If this is the built-in print function
-			if (methodName.equals("print")) {
-				
-				if (args.length != 1) {
-					printError("print(args) expects one argument; Got " + args.length + " arguments.");
-				}
-				
-				Instruction lastInstruction = parseExpression(parentInstruction, args[0]);
-				
-				Instruction instr = new Instruction(InstructionType.Print);
-				instr.stringRepresentation = args[0];
-				instr.setArgs(lastInstruction);
-				instr.parentInstruction = parentInstruction;
-				instructions.add(instr);
-				
-			} else { // This must be a user-defined function
-				Instruction instr = new Instruction(InstructionType.Call);
-				instr.stringRepresentation = line;
-				instr.routineName = methodName;
-				
-				// Parse each of the arguments to this function
-				Instruction[] argInstructions = new Instruction[args.length];
-				for (int i = 0; i < args.length; i++) {
-					
-					// Recursively parse the expressions
-					Instruction lastInstruction = parseExpression(parentInstruction, args[i]);
-					argInstructions[i] = lastInstruction;
-				}
-				instr.setArgs(argInstructions);
-				
-				instr.returnType = null; // This will be determined after the whole program is compiled
-				instr.parentInstruction = parentInstruction;
-				instructions.add(instr);
-			}
 		} else {
 			printError("Invalid line: " + line);
 			return null;
@@ -966,7 +918,6 @@ public class Compiler {
 		text = ParseUtil.removeUnnecessaryParentheses(text.trim());
 		
 		// TODO test function scope rules
-		// TODO parse functions inside expressions
 		
 		if (text.isEmpty()) {
 			printError("Empty expression encountered (value expected)");
@@ -991,6 +942,13 @@ public class Compiler {
 			// Get the types of each operand to this operator
 			Type operandType1 = lastInstruction1.returnType;
 			Type operandType2 = lastInstruction2.returnType;
+			
+			if (operandType1 == null) {
+				printError("Expression returns nothing: '" + firstHalf + "'");
+			}
+			if (operandType2 == null) {
+				printError("Expression returns nothing: '" + lastHalf + "'");
+			}
 			
 			// Create the instruction for this binary operator
 			InstructionType type = getInstructionTypeFromOperator(op);
@@ -1161,9 +1119,13 @@ public class Compiler {
 					instr.setArgs(args);
 					
 					instructions.add(instr);
+				
+				} else if (text.indexOf('(') != -1 && text.indexOf(')') != -1) { // Function call
+					
+					parseFunctionCall(parentInstruction, text, false);
 					
 				} else { // This must be a variable, or garbage
-					
+				
 					// Check if this is a recognized variable
 					Variable var = findVariableByName(parentInstruction, text);
 					if (var == null) {
@@ -1201,6 +1163,71 @@ public class Compiler {
 			return instructions.get(instructions.size() - 1);
 		} else {
 			return null; // No instruction was added.
+		}
+	}
+	
+	// Parse the calling of a function.
+	// 'text' should look like "myFunction(arg1, arg2, arg3)"
+	static void parseFunctionCall(Instruction parentInstruction, final String text, final boolean isAloneOnALine) {
+		
+		String[] nameAndArgs = ParseUtil.getFunctionNameAndArgs(text);
+		
+		if (nameAndArgs == null) {
+			printError("Cannot parse function call '" + text + "'");
+		}
+		
+		final String functionName = nameAndArgs[0];
+		final String argsString = nameAndArgs[1];
+		
+		// If this function is alone on a line, then make sure there are no characters after it
+		if (isAloneOnALine) {
+			ParseUtil.checkForExcessCharacters(text, argsString);
+		}
+		
+		final String[] argStrings = ParseUtil.separateArguments(argsString);
+		
+		// If this is the built-in print function
+		if (functionName.equals("print")) {
+			
+			if (argStrings.length != 1) {
+				printError("print(args) expects one argument; Got " + argStrings.length + " arguments.");
+			}
+			
+			Instruction lastInstruction = parseExpression(parentInstruction, argStrings[0]);
+			
+			Instruction instr = new Instruction(InstructionType.Print);
+			instr.stringRepresentation = argStrings[0];
+			instr.setArgs(lastInstruction);
+			instr.parentInstruction = parentInstruction;
+			instructions.add(instr);
+			
+		} else { // Some user-defined function
+		
+			// Recursively parse each function argument
+			Instruction[] args = new Instruction[argStrings.length];
+			for (int i = 0; i < argStrings.length; i++) {
+				Instruction lastInstruction = parseExpression(parentInstruction, argStrings[i]);
+				args[i] = lastInstruction;
+				
+				if (lastInstruction.returnType == null) {
+					printError("Function argument must return a value");
+				}
+				
+				if (lastInstruction.returnType.baseType == BaseType.Void) {
+					printError("Cannot pass void into function");
+				}
+			}
+			
+			Function func = findFunctionByNameAndArgs(functionName, args);
+			
+			// Create the function Call instruction
+			Instruction callInstr = new Instruction(InstructionType.Call);
+			callInstr.stringRepresentation = text;
+			callInstr.functionThatWasCalled = func;
+			callInstr.returnType = func.returnTypes[0]; // TODO add multiple returns
+			callInstr.setArgs(args);
+			callInstr.parentInstruction = parentInstruction;
+			instructions.add(callInstr);
 		}
 	}
 	
@@ -1483,29 +1510,6 @@ public class Compiler {
 		}
 	}
 	
-	// Determine which function declaration each function call was referencing
-	static boolean findFunctionCallReferences() {
-		
-		// Search through each function call
-		for (int i = 0; i < instructions.size(); i++) {
-			Instruction instr = instructions.get(i);
-			
-			// If this is a function call
-			if (instr.instructionType == InstructionType.Call) {
-				
-				Instruction functionRef = findFunctionByNameAndArgs(instr);
-				
-				if (functionRef == null) {
-					return true;
-				}
-				
-				instr.callFunctionReference = functionRef;
-			}
-		}
-		
-		return false;
-	}
-	
 	// Return true if the given function was previously declared in the given scope
 	static boolean findConflictingFunction(Instruction parentInstr, Function function) {
 		
@@ -1558,105 +1562,74 @@ public class Compiler {
 	}
 	
 	// Return the instruction that declared the routine of the given name and argument types
-	static Instruction findFunctionByNameAndArgs(Instruction instr) {
+	static Function findFunctionByNameAndArgs(String functionName, Instruction[] args) {
 		
-		Type[] argTypes = new Type[instr.args.length];
-		for (int j = 0; j < argTypes.length; j++) {
-			argTypes[j] = instr.args[j].returnType;
-		}
+		Function bestMatchingFunction = null;
+		int minimumImplicitCasts = Integer.MAX_VALUE;
 		
-		Instruction parentInstr = instr.parentInstruction;
-		String routineName = instr.routineName;
-		
-		// If we found a matching routine that required implicit casts to call, then record it just in case.
-		Instruction implicitMatch = null;
-		
-		// Only used for error handling
-		Function matchingNameRoutine = null;
+		// For error printing only
+		Function nameOnlyMatchingFunction = null;
 		
 		// Iterate backward to find a routine
 		outerLoop:
-		for (int i = instructions.size()-1; i >= 0; i--) {
-			Instruction otherInstruction = instructions.get(i);
+		for (int i = 0; i < functions.size(); i++) {
+			Function otherFunction = functions.get(i);
 			
-			// If this is a routine definition
-			if (otherInstruction.instructionType == InstructionType.FunctionDefinition) {
+			// If they have matching names
+			if (otherFunction.name.equals(functionName)) {
 				
-				// If this instruction defined a routine by the same name
-				if (otherInstruction.functionThatWasDefined.name.equals(routineName)) {
-					matchingNameRoutine = otherInstruction.functionThatWasDefined;
-					
-					Instruction otherParent = otherInstruction.parentInstruction; // May be null
-					
-					boolean isInValidScope = false;
-					
-					// If this instruction is a child of an instruction that is a ancestor of the
-					//    given instruction, then it must be true that that instruction executed if the
-					//    given instruction executed, so it is in scope
-					Instruction nextParent = parentInstr;
-					while (nextParent != otherParent && nextParent != null) {
-						nextParent = nextParent.parentInstruction;
-					}
-					if (nextParent == otherParent) {
-						isInValidScope = true;
-					}
-					
-					// If this instruction is a descendant of the parent of the given instruction,
-					//    then it might be in scope due to the global scope of functions.
-					nextParent = otherParent;
-					while (nextParent != parentInstr && nextParent != null) {
-						nextParent = nextParent.parentInstruction;
-					}
-					if (nextParent == parentInstr) {
-						isInValidScope = true;
-					}
-					
-					// If this routine is in scope
-					if (isInValidScope) {
-						// If they have matching parameters
-						Type[] otherArgTypes = otherInstruction.functionThatWasDefined.argTypes;
-						
-						// Make sure each of the arguments can be cast to the others
-						if (otherArgTypes.length == argTypes.length) {
-							boolean requiresImplicitCast = false;
-							for (int j = 0; j < argTypes.length; j++) {
-								if (argTypes[j] == otherArgTypes[j]) {
-									// Good exact match
-								} else if (argTypes[j].canImplicitlyCastTo(otherArgTypes[j])) {
-									requiresImplicitCast = true;
-								} else {
-									continue outerLoop; // continue searching for another routine
-								}
-							}
-							
-							// The arguments matched
-							if (requiresImplicitCast) {
-								implicitMatch = otherInstruction;
-							} else {
-								// This was an exact match (with no implicit casting)
-								return otherInstruction;
-							}
+				nameOnlyMatchingFunction = otherFunction;
+				
+				// If they have matching parameters
+				Type[] otherArgTypes = otherFunction.argTypes;
+				
+				// Make sure each of the arguments can be cast to the others
+				if (otherArgTypes.length == args.length) {
+					int implicitCastCount = 0;
+					for (int j = 0; j < args.length; j++) {
+						if (args[j].returnType == otherArgTypes[j]) {
+							// Good exact match
+						} else if (args[j].returnType.canImplicitlyCastTo(otherArgTypes[j])) {
+							implicitCastCount++; // Match, but requiring cast
+						} else {
+							// Doesn't match this function.
+							continue outerLoop; // continue searching for another routine
 						}
+					}
+					
+					// If we found a better matching function
+					if (implicitCastCount < minimumImplicitCasts) {
+						
+						bestMatchingFunction = otherFunction;
+						minimumImplicitCasts = implicitCastCount;
+						
+						// If we found another function that has the same name and same implicit casting,
+						// then can't tell which function to call (ambiguous case).
+					} else if (implicitCastCount == minimumImplicitCasts) {
+						printError("Function '" + functionName +
+								"' cannot be differentiated from function '" + otherFunction.name + "'");
 					}
 				}
 			}
 		}
 
 		// If we found an implicit match, then that is good enough
-		if (implicitMatch != null) {
-			return implicitMatch;
-		}
-
-		String argsString = "";
-		for (int j = 0; j < argTypes.length; j++) {
-			argsString += argTypes[j];
-			if (j != argTypes.length-1) {
-				argsString += ", ";
-			}
+		if (bestMatchingFunction != null) {
+			return bestMatchingFunction;
 		}
 		
-		if (matchingNameRoutine != null) {
-			Type[] otherArgTypes = matchingNameRoutine.argTypes;
+		// If we didn't find an exact match, then print an argument-mismatch error.
+		if (nameOnlyMatchingFunction != null) {
+			
+			String argsString = "";
+			for (int j = 0; j < args.length; j++) {
+				argsString += args[j].returnType;
+				if (j != args.length - 1) {
+					argsString += ", ";
+				}
+			}
+			
+			Type[] otherArgTypes = nameOnlyMatchingFunction.argTypes;
 			String otherArgsString = "";
 			for (int j = 0; j < otherArgTypes.length; j++) {
 				otherArgsString += otherArgTypes[j];
@@ -1665,12 +1638,12 @@ public class Compiler {
 				}
 			}
 			
-			printError("Function " + matchingNameRoutine.name + "(" + otherArgsString + ") cannot take arguments "
+			printError("Function " + functionName + "(" + otherArgsString + ") cannot take arguments "
 						+ "(" + argsString + ")");
 			return null;
 		}
 		
-		printError("Function " + routineName + "(" + argsString + ") has not been declared");
+		printError("Unknown function '" + functionName + "(...)'");
 		return null;
 	}
 	
@@ -1962,6 +1935,55 @@ public class Compiler {
 			return null;
 		}
 		return parent;
+	}
+	
+	// Find every function declaration in the program, and add it to the list, 'functions'
+	static void findAllDeclaredFunctions() {
+		
+		// Iterate over every line in the program
+		for (int i = 0; i < lines.length; i++) {
+			currentParsingLineNumber = i;
+			final String line = lines[i];
+			
+			// Check if this is a function declaration,
+			// and get the starting index of the function's name.
+			final int nameStartIndex = ParseUtil.findFunctionDeclarationNameStartIndex(line);
+			if (nameStartIndex != -1) {
+				TypeAndEnd typeData = ParseUtil.getFirstDataType(line);
+				
+				String[] nameAndArgs = ParseUtil.getFunctionNameAndArgs(line);
+				final String functionName = nameAndArgs[0];
+				final String argsString = nameAndArgs[1];
+				
+				if (typeData == null) {
+					String typeString = line.substring(0, nameStartIndex - 1).trim();
+					printError("Invalid type '" + typeString + "' function declaration");
+				}
+				
+				// Check for extraneous character after the end of the function declaration
+				ParseUtil.checkForExcessCharacters(line, argsString);
+				
+				Type returnType = typeData.type;
+				
+				String[] argStrings = ParseUtil.separateArguments(argsString);
+				Type[] argTypes = new Type[argStrings.length];
+				for (int j = 0; j < argTypes.length; j++) {
+					int firstSpaceIndex = argStrings[j].indexOf(' ');
+					if (firstSpaceIndex == -1) {
+						printError("Missing argument name or type in function declaration");
+					}
+					
+					String typeString = argStrings[j].substring(0, firstSpaceIndex);
+					argTypes[j] = new Type(typeString);
+				}
+				
+				Type[] returnTypes = {returnType}; // TODO add multiple returns
+				
+				Function function = new Function(functionName, returnTypes, argTypes);
+				
+				functions.add(function);
+			}
+		}
 	}
 	
 	// Load some text from a file

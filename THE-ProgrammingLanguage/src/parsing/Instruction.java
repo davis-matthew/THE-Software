@@ -36,11 +36,8 @@ public class Instruction {
 	// The routine reference (only applicable for RoutineDefinition instructions)
 	public Function functionThatWasDefined = null;
 	
-	// The name of the routine that was referenced (for Call and FunctionDefinition instruction type)
-	public String routineName = null;
-	
 	// Reference to the routine instruction that this Call instruction executes
-	public Instruction callFunctionReference = null;
+	public Function functionThatWasCalled = null;
 	
 	// The instruction that contains this instruction (such as an If, a loop, or a method).
 	// This may be null for instructions not in any conditional structure or method.
@@ -121,16 +118,8 @@ public class Instruction {
 			s += "->" + returnType;
 		}
 		
-		if (callFunctionReference != null) {
-			String argsString = "";
-			Type[] argTypes = callFunctionReference.functionThatWasDefined.argTypes;
-			for (int j = 0; j < argTypes.length; j++) {
-				argsString += argTypes[j];
-				if (j != argTypes.length-1) {
-					argsString += ", ";
-				}
-			}
-			s += " [call " + callFunctionReference.routineName + "(" + argsString + ")]";
+		if (functionThatWasCalled != null) {
+			s += " [call " + functionThatWasCalled.name + "]";
 		}
 		
 		if (variableThatWasChanged != null) {
