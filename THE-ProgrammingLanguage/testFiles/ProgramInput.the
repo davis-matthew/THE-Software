@@ -1,5 +1,9 @@
 
-//*
+int a = 0
+a = 1
+print(a)
+
+/*
 int[] arr = int[8]
 int a = 0
 arr[6] = 77
