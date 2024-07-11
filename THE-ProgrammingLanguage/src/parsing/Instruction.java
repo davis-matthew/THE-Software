@@ -106,8 +106,13 @@ public class Instruction {
 		if (args != null) {
 			s += "(";
 			for (int i = 0; i < args.length; i++) {
-				s += args[i].returnType + " " + args[i].id;
-				if (i != args.length-1) {
+				if (args[i] == null) {
+					System.out.println("*** null argument found ***");
+					s += "null";
+				} else {
+					s += args[i].returnType + " " + args[i].id;
+					
+				}if (i != args.length-1) {
 					s += ", ";
 				}
 			}

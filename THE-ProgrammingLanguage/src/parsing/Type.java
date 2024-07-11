@@ -242,6 +242,12 @@ public class Type {
 		return false;
 	}
 	
+	// Return a copy of this type, but with pointerDepth increased by 1.
+	// int[] -> int*[]
+	public Type makePointerToThis() {
+		return new Type(baseType, dimensions, isArray, pointerDepth + 1);
+	}
+	
 	@Override
 	public String toString() {
 		String s = "";

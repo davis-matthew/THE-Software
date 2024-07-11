@@ -5,6 +5,7 @@ package parsing;
 public class Variable {
 	public String name; // User-given name of this variable
 	public Type type;
+	public Instruction instructionThatDeclared; // The instruction that declared this variable
 	
 	// Create a new variable of a certain name and type
 	public Variable(String varName, Type varType) {

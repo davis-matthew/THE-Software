@@ -16,8 +16,8 @@ public enum InstructionType {
 	Given, // Load a value from program memory (like a constant)
 	Reassign, // Change the value of an existing variable (or index in an array)
 	Alloc, // Allocate memory, but without assigning it to any variable
-	Initialize, // Initialize a new variable and assign it to something
-	Declare, // Declare the scope of a variable without assigning it to anything???
+	Initialize, // Initialize a new variable and assign it to something, returns a pointer
+	Declare, // Declare the scope of a variable without assigning it to anything, returns a pointer
 	ArrayLength, // Read the length of an array
 	Break, // Instantly jump out of the end of the nearest loop
 	Continue, // Jump directly to the nearest loop header

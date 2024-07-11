@@ -619,10 +619,12 @@ public class Compiler {
 					
 					Instruction instr = new Instruction(InstructionType.Declare);
 					instr.stringRepresentation = var.type + " " + var.name;
+					instr.returnType = var.type.makePointerToThis();
 					instr.variableThatWasChanged = var;
-					instr.returnType = var.type;
 					instr.parentInstruction = routineInstr;
 					instructions.add(instr);
+					
+					var.instructionThatDeclared = instr;
 					
 					args[i] = instr;
 				}
@@ -658,9 +660,12 @@ public class Compiler {
 					
 					Instruction instr = new Instruction(InstructionType.Declare);
 					instr.stringRepresentation = varType + " " + varName;
+					instr.returnType = varType.makePointerToThis(); // Pointer of type 'varType'
 					instr.variableThatWasChanged = var;
 					instr.parentInstruction = parentInstruction;
 					instructions.add(instr);
+					
+					var.instructionThatDeclared = instr;
 					
 				} else if (operator.equals("=")) { // If this is an allocation and assignment
 					
@@ -680,9 +685,12 @@ public class Compiler {
 					
 					Instruction instr = new Instruction(InstructionType.Initialize);
 					instr.stringRepresentation = varType + " " + varName + " = " + expressionContent;
+					instr.returnType = varType.makePointerToThis(); // Pointer of type 'varType'
 					instr.setArgs(lastInstruction);
 					instr.variableThatWasChanged = var;
 					instr.parentInstruction = parentInstruction;
+					
+					var.instructionThatDeclared = instr;
 					
 					instructions.add(instr);
 				} else {
@@ -1654,12 +1662,11 @@ public class Compiler {
 		for (int i = instructions.size()-1; i >= 0; i--) {
 			Instruction otherInstruction = instructions.get(i);
 			
-			/*
-			if (type == InstructionType.RoutineDefinition) { // If this is a routine
-				// We can stop searching because we hit the header of the routine the given instruction is inside.
+			// If this is the header of a function...
+			// then we can stop searching because we hit the top of the function the given instruction is inside.
+			if (otherInstruction.instructionType == InstructionType.FunctionDefinition) {
 				return null;
 			}
-			*/
 			
 			Variable var = otherInstruction.variableThatWasChanged;
 			if (var == null) {
@@ -1684,46 +1691,6 @@ public class Compiler {
 			}
 		}
 		return null;
-	}
-	
-	// Add references to all instructions that may have declared or read the given variable
-	//    until we find an instruction that is guaranteed to have declared or read the given variable.
-	// Return true if a guaranteed declaration or read was found.
-	static boolean addReferenceToInstructionsThatDeclaredOrRead(Instruction instr, Variable var) {
-		
-		// Iterate backward to find the assignment of this variable
-		for (int i = instructions.size()-1; i >= 0; i--) {
-			Instruction otherInstruction = instructions.get(i);
-			InstructionType type = otherInstruction.instructionType;
-			if (type == InstructionType.Initialize || type == InstructionType.Read ||
-					type == InstructionType.Declare) {
-				
-				// If this instruction wrote to the given variable
-				if (otherInstruction.variableThatWasChanged == var ||
-						otherInstruction.variableThatWasRead == var) {
-					
-					Instruction otherParent = otherInstruction.parentInstruction; // May be null
-					
-					// If this instruction is a direct child of an instruction that is an ancestor of the
-					//    given instruction, then it must be true that that instruction executed if the
-					//    given instruction executed, so we can stop searching.
-					Instruction nextParent = instr.parentInstruction;
-					while (nextParent != otherParent && nextParent != null) {
-						nextParent = nextParent.parentInstruction;
-					}
-					
-					// If we found a guaranteed executed instruction in the parent scope
-					if (nextParent == otherParent) {
-						return true;
-					}
-				}
-			}// else if (type == InstructionType.RoutineDefinition) { // If this is a routine
-				// We can stop searching because we hit the header of the routine the given instruction is inside.
-			//	return false;
-			//}
-		}
-		
-		return false;
 	}
 	
 	// Add references to all instructions that may have assigned to the given variable
