@@ -1,16 +1,15 @@
 
-int a = 5
-a *= 4
-print(a)
-
-/*
-int[] arr = int[8]
-int a = 0
-arr[6] = 77
-a = 2
-arr[a] = 66
-print(arr[6])
-//*/
+int x = 1
+if (x = 2)
+	print("Hello")
+elseif x = 4
+	print("aslkjdf")
+elseif x = 5
+	print("MEAT2")
+	while (1 = x)
+		print("asdf")
+	]
+]
 
 /*
 for int i = 1, 5

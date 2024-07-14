@@ -1,4 +1,4 @@
-package parsing;
+package instructions;
 
 enum QuadInstructionType {
 	Assignment, Branch, Print

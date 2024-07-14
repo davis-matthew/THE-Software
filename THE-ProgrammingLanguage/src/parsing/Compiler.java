@@ -21,7 +21,6 @@ import instructions.ConcatInstr;
 import instructions.ContinueInstr;
 import instructions.DeclareInstr;
 import instructions.DivideInstr;
-import instructions.ElseIfInstr;
 import instructions.ElseInstr;
 import instructions.EndBlockInstr;
 import instructions.EqualInstr;
@@ -43,6 +42,7 @@ import instructions.MultInstr;
 import instructions.NotEqualInstr;
 import instructions.PowerInstr;
 import instructions.PrintInstr;
+import instructions.QuadInstruction;
 import instructions.RefEqualInstr;
 import instructions.RefNotEqualInstr;
 import instructions.StartBlockInstr;
@@ -317,7 +317,7 @@ public class Compiler {
 			EndBlockInstr ifBoundEnd = new EndBlockInstr(lastInstructionFromIfCondition, "end if");
 			instructions.add(ifBoundEnd);
 			
-			lastInstructionFromIfCondition.endChainInstruction = ifBoundEnd;
+			lastInstructionFromIfCondition.endOfBlockInstr = ifBoundEnd;
 			
 			// Reassign the for-each loop reference variable, if this is a for-each loop
 			if (forEachAssignment != null) {
@@ -345,10 +345,10 @@ public class Compiler {
 			
 			// Get the contents of the conditional
 			int conditionStartIndex = 7;
-			String expressionContent = line.substring(conditionStartIndex);
+			String expressionContent = line.substring(conditionStartIndex).trim();
 			
 			// Detect an empty conditional statement
-			if (expressionContent.trim().isEmpty()) {
+			if (expressionContent.isEmpty()) {
 				printError("Boolean expression missing in Do-While loop footer");
 			}
 			
@@ -360,7 +360,7 @@ public class Compiler {
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
-			IfInstr ifInstr = new IfInstr(doStartInstruction, "if " + notInstr.debugString, notInstr, null, null);
+			IfInstr ifInstr = new IfInstr(doStartInstruction, "if " + notInstr.debugString, notInstr, false);
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
@@ -371,7 +371,7 @@ public class Compiler {
 			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
 			instructions.add(endIf);
 			
-			ifInstr.endChainInstruction = endIf;
+			ifInstr.endOfBlockInstr = endIf;
 			
 			// Make sure the return type of the condition is boolean
 			Type operandType = lastInstruction.returnType;
@@ -387,15 +387,15 @@ public class Compiler {
 			
 		} else if (ParseUtil.doesLineStartWith(line, "while")) { // While loop
 			
-			LoopInstr loopStartLabel = new LoopInstr(parentInstruction, "while loop start", true);
+			LoopInstr loopStartLabel = new LoopInstr(parentInstruction, "while loop start", false);
 			instructions.add(loopStartLabel);
 			
 			// Get the contents of the conditional
 			int conditionStartIndex = 5;
-			String expressionContent = line.substring(conditionStartIndex);
+			String expressionContent = line.substring(conditionStartIndex).trim();
 			
 			// Detect an empty conditional statement
-			if (expressionContent.trim().isEmpty()) {
+			if (expressionContent.isEmpty()) {
 				printError("Boolean expression missing in While loop");
 			}
 			
@@ -417,7 +417,7 @@ public class Compiler {
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
-			IfInstr ifInstr = new IfInstr(loopStartLabel, "if !(" + expressionContent + ")", notInstr, null, null);
+			IfInstr ifInstr = new IfInstr(loopStartLabel, "if !(" + expressionContent + ")", notInstr, false);
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
@@ -428,37 +428,16 @@ public class Compiler {
 			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
 			instructions.add(endIf);
 			
-			ifInstr.endChainInstruction = endIf;
+			ifInstr.endOfBlockInstr = endIf;
 			
-		} else if (ParseUtil.doesLineStartWith(line, "if")  ||
-					ParseUtil.doesLineStartWith(line, "elseif")) { // If-statement or ElseIf-statement
-			
-			// Determine if this is an If-statement, or an ElseIf-statement
-			boolean isElseIf = line.startsWith("elseif");
-			
-			// Find the last If or ElseIf instruction that hasn't been connected to an end instruction.
-			Instruction precedingChainInstruction = null; // Only use for ElseIf
-			if (isElseIf) {
-				if (parentInstruction instanceof IfInstr ||
-					parentInstruction instanceof ElseIfInstr) {
-					
-					precedingChainInstruction = parentInstruction;
-				} else {
-					printError("Else-if block not preceded by If or Else-if block");
-				}
-			}
+		} else if (ParseUtil.doesLineStartWith(line, "if")) { // If-statement
 		
 			// Get the contents of the conditional
-			int conditionStartIndex = 2;
-			if (isElseIf) {
-				conditionStartIndex = 6;
-			}
-			String expressionContent = line.substring(conditionStartIndex);
+			String expressionContent = line.substring("if".length()).trim();
 			
 			// Detect an empty conditional statement
-			if (expressionContent.trim().isEmpty()) {
-				String instructionType = isElseIf ? "Else-if" : "If";
-				printError("Boolean expression missing in " + instructionType);
+			if (expressionContent.isEmpty()) {
+				printError("Boolean expression missing in If-condition");
 			}
 			
 			// Get the instructions for the content of this assignment
@@ -470,64 +449,67 @@ public class Compiler {
 				printError("Cannot implicitly cast from " + operandType + " to " + Type.Bool);
 			}
 			
-			// Mark the end of the previous chaining instruction
-			if (isElseIf) {
-				
-				// Create the EndBlock to end the preceding chained instruction
-				EndBlockInstr previousEndInstr = new EndBlockInstr(
-						precedingChainInstruction, "end " + precedingChainInstruction.name());
-				instructions.add(previousEndInstr);
-
-				IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, null, null);
-				instructions.add(ifInstr);
-				
-				// Mark the end of the previous chaining instruction and
-				// mark this as the next instruction in the chain from the previous.
-				if (precedingChainInstruction instanceof IfInstr) {
-					((IfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
-					((IfInstr)precedingChainInstruction).nextChainedInstruction = ifInstr;
-				} else if (precedingChainInstruction instanceof ElseIfInstr) {
-					((ElseIfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
-					((ElseIfInstr)precedingChainInstruction).nextChainedInstruction = ifInstr;
-				} else {
-					printError(precedingChainInstruction.name() + " cannot be followed in a chain by If or Else-if");
-				}
-			} else {
-				IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, null, null);
-				instructions.add(ifInstr);
+			IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, false);
+			instructions.add(ifInstr);
+			
+		} else if (ParseUtil.doesLineStartWith(line, "elseif")) { // ElseIf-statement
+			
+			if (!(parentInstruction instanceof IfInstr)) {
+				printError("Else-if condition must be preceded by an if-block");
 			}
+			
+			// Inject an end-block to close the if-statement first if this is an else-if statement.
+			EndBlockInstr previousEndInstr = new EndBlockInstr(parentInstruction, "end " + parentInstruction.name());
+			instructions.add(previousEndInstr);
+			
+			ElseInstr elseInstr = new ElseInstr(parentInstruction.parentInstruction, "", (IfInstr)parentInstruction);
+			instructions.add(elseInstr);
+			
+			// Get the contents of the conditional
+			String expressionContent = line.substring("elseif".length()).trim();
+			
+			// Detect an empty conditional statement
+			if (expressionContent.isEmpty()) {
+				printError("Boolean expression missing in elseif condition");
+			}
+			
+			// Get the instructions for the content of this assignment
+			Instruction lastInstruction = parseExpression(elseInstr, expressionContent);
+			
+			// Make sure the return type of an "if" condition is a boolean
+			Type operandType = lastInstruction.returnType;
+			if (!operandType.canImplicitlyCastTo(Type.Bool)) {
+				printError("Cannot implicitly cast from " + operandType + " to " + Type.Bool);
+			}
+			
+			IfInstr ifInstr = new IfInstr(elseInstr, "elseif " + expressionContent, lastInstruction, true);
+			instructions.add(ifInstr);
+			
+			// Mark the end of the previous chaining instruction and
+			// mark this as the next instruction in the chain from the previous.
+			((IfInstr)parentInstruction).endOfBlockInstr = previousEndInstr;
+			((IfInstr)parentInstruction).elseInstr = elseInstr;
 			
 		} else if (line.equals("else")) { // This is an else chained onto an if
 			
-			Instruction precedingChainInstruction = null;
-			if (parentInstruction instanceof IfInstr ||
-				parentInstruction instanceof ElseIfInstr) {
-				
-				precedingChainInstruction = parentInstruction;
-			} else {
-				printError("Else block not preceded by If or ElseIf block");
+			if (!(parentInstruction instanceof IfInstr)) {
+				printError("Else block not preceded by If or Else-if block");
 			}
+			IfInstr ifInstr = (IfInstr)parentInstruction;
 			
 			// Create the EndBlock to end of the previous chained instruction
 			EndBlockInstr previousEndInstr = new EndBlockInstr(
-					precedingChainInstruction, "end " + precedingChainInstruction.name());
+					ifInstr, "end " + ifInstr.name());
 			instructions.add(previousEndInstr);
 			
 			// Create the Else block
-			ElseInstr elseInstr = new ElseInstr(parentInstruction, "else", null);
-			elseInstr.debugString = "else";
-			elseInstr.parentInstruction = precedingChainInstruction.parentInstruction;
+			ElseInstr elseInstr = new ElseInstr(parentInstruction.parentInstruction, "else", ifInstr);
 			instructions.add(elseInstr);
-
+			
 			// Mark the end of the previous chaining instruction and
 			// mark this as the next instruction in the chain from the previous.
-			if (precedingChainInstruction instanceof IfInstr) {
-				((IfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
-				((IfInstr)precedingChainInstruction).nextChainedInstruction = elseInstr;
-			} else if (precedingChainInstruction instanceof ElseIfInstr) {
-				((ElseIfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
-				((ElseIfInstr)precedingChainInstruction).nextChainedInstruction = elseInstr;
-			}
+			ifInstr.endOfBlockInstr = previousEndInstr;
+			ifInstr.elseInstr = elseInstr;
 		
 		} else if (line.equals("]")) { // Descope (for closing a loop, if, elseif, etc.)
 			
@@ -560,6 +542,26 @@ public class Compiler {
 			// Mark a reference to the end of the loop
 			if (openingBlockInstr instanceof LoopInstr) {
 				((LoopInstr)openingBlockInstr).endInstr = endInstr;
+			}
+			if (openingBlockInstr instanceof IfInstr) {
+				IfInstr ifInstr = (IfInstr)openingBlockInstr;
+				ifInstr.endOfBlockInstr = endInstr;
+				
+				// If this was an auto-generated if-else block (converted from an else-if),
+				// then we'll need to add an extra closing bracket and the end of the chain.
+				if (ifInstr.wasThisAnElseIfBlock) {
+					parseLine("]");
+				}
+			}
+			if (openingBlockInstr instanceof ElseInstr) {
+				ElseInstr elseInstr = (ElseInstr)openingBlockInstr;
+				elseInstr.endOfBlockInstr = endInstr;
+				
+				// If this was an auto-generated if-else block (converted from an else-if),
+				// then we'll need to add an extra closing bracket and the end of the chain.
+				if (elseInstr.previousIfInstr.wasThisAnElseIfBlock) {
+					parseLine("]");
+				}
 			}
 			
 		} else if (ParseUtil.getFirstDataType(line) != null) { // If this is a declaration of some sort
@@ -1062,6 +1064,14 @@ public class Compiler {
 					
 					parseFunctionCall(parentInstruction, text, false);
 					
+				} else if (text.contains(" ")) { // This must be garbage
+					
+					if (text.contains("==")) {
+						printError("Invalid expression: '" + text + "'. Did you mean '='?");
+					} else {
+						printError("Invalid expression: '" + text + "'");
+					}
+					
 				} else { // This must be a variable, or garbage
 				
 					// Check if this is a recognized variable
@@ -1165,6 +1175,8 @@ public class Compiler {
 	// Return the return data type for the given instruction type and operands
 	public static Type getReturnTypeFromInstructionAndOperands(Instruction instr, Type op1, Type op2) {
 		
+		// TODO need to change all these tests to the .isA(baseType) function.
+		
 		if (instr instanceof AddInstr ||
 			instr instanceof SubInstr ||
 			instr instanceof MultInstr ||
@@ -1266,9 +1278,21 @@ public class Compiler {
 				printError("Modulus cannot be performed on " + op1 + " and " + op2);
 				return null;
 			}
+			
+		} else if (instr instanceof BoolNotInstr) {
+			
+			if (op2 != null) {
+				printError("NOT cannot be performed on two arguments");
+			}
+			
+			if (op1.isA(BaseType.Bool)) {
+				return Type.Bool;
+			} else {
+				printError("NOT cannot be performed on type " + op1);
+			}
+			
 		} else if (instr instanceof BoolAndInstr ||
-				   instr instanceof BoolOrInstr ||
-				   instr instanceof BoolNotInstr) {
+				   instr instanceof BoolOrInstr) {
 			
 			if (op1.baseType == BaseType.Bool && op2.baseType == BaseType.Bool) {
 				return Type.Bool;
@@ -1280,15 +1304,24 @@ public class Compiler {
 			} else if (instr instanceof BoolOrInstr) {
 				printError("OR cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instr instanceof BoolNotInstr) {
-				printError("NOT cannot be performed on " + op1 + " and " + op2);
-				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
+		
+		} else if (instr instanceof BitNotInstr) {
+			
+			if (op2 != null) {
+				printError("Bitwise-NOT cannot be performed on two arguments");
+			}
+			
+			if (op1.isIntegerType()) {
+				return op1;
+			} else {
+				printError("Bitwise-NOT cannot be performed on type " + op1);
+			}
+			
 		} else if (instr instanceof BitAndInstr ||
-				   instr instanceof BitOrInstr ||
-				   instr instanceof BitNotInstr) {
+				   instr instanceof BitOrInstr) {
 			
 			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
 				return Type.Int;
@@ -1301,9 +1334,6 @@ public class Compiler {
 				return null;
 			} else if (instr instanceof BitOrInstr) {
 				printError("Bitwise OR cannot be performed on " + op1 + " and " + op2);
-				return null;
-			} else if (instr instanceof BitNotInstr) {
-				printError("Bitwise NOT cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
@@ -1739,29 +1769,23 @@ public class Compiler {
 			
 			// If we are inside a if-elseif-else structure, but not all the way at the
 			//    top of the chain, then stop searching here.
-			if (currentParent instanceof ElseInstr ||
-				currentParent instanceof ElseIfInstr) {
-				
+			if (currentParent instanceof ElseInstr) {
 				return false;
 			}
 			
 			// If we are inside an if-elseif-else structure, and this instruction is
-			//    inside the leading if-condition
+			//    inside the leading if-condition.
 			if (currentParent instanceof IfInstr) {
 				Instruction currentIf = currentParent;
 				
 				// Check if this if-chain ends in an else (i.e. it may be exhaustive)
-				do {
-					if (currentIf instanceof IfInstr) {
-						currentIf = ((IfInstr)currentIf).nextChainedInstruction;
-					} else if (currentIf instanceof ElseIfInstr) {
-						currentIf = ((ElseIfInstr)currentIf).nextChainedInstruction;
+				if (currentIf instanceof IfInstr) {
+					currentIf = ((IfInstr)currentIf).elseInstr;
+					
+					// If this chain did not end in an Else-block, then we are done searching
+					if (currentIf == null) {
+						return false;
 					}
-				} while (currentIf != null && !(currentIf instanceof ElseInstr));
-				
-				// If this chain did not end in an Else-block, then we are done searching
-				if (currentIf == null) {
-					return false;
 				}
 				
 				// If this chain DID end in an else-block, then we need to check if
@@ -1770,16 +1794,12 @@ public class Compiler {
 				do {
 					// This must be an ElseIf or an Else block
 					if (currentIf instanceof IfInstr) {
-						currentIf = ((IfInstr)currentIf).nextChainedInstruction;
-					} else if (currentIf instanceof ElseIfInstr) {
-						currentIf = ((ElseIfInstr)currentIf).nextChainedInstruction;
+						currentIf = ((IfInstr)currentIf).elseInstr;
 					}
 					
 					Instruction endChainInstruction = null;
 					if (currentIf instanceof IfInstr) {
-						endChainInstruction = ((IfInstr)currentIf).endChainInstruction;
-					} else if (currentIf instanceof ElseIfInstr) {
-						endChainInstruction = ((ElseIfInstr)currentIf).endChainInstruction;
+						endChainInstruction = ((IfInstr)currentIf).endOfBlockInstr;
 					}
 					int startInstructionIndex = instructions.indexOf(currentIf) + 1;
 					int endChainInstructionIndex = instructions.indexOf(endChainInstruction);

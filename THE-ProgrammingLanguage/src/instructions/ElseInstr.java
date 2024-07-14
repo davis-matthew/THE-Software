@@ -2,13 +2,15 @@ package instructions;
 
 public class ElseInstr extends Instruction {
 	
-	// The end of an If may be an ElseIf, an Else, or an EndBlock.
-	// The end instruction associated with this beginning instruction.
-	public Instruction endChainInstruction = null;
+	// This is the end of the else-block.
+	public EndBlockInstr endOfBlockInstr = null;
 	
-	public ElseInstr(Instruction parentInstruction, String debugString, EndBlockInstr endChainInstruction) {
+	// Reference to the if-statement that this belongs to.
+	public IfInstr previousIfInstr;
+	
+	public ElseInstr(Instruction parentInstruction, String debugString, IfInstr previousIfInstr) {
 		super(parentInstruction, null, debugString);
-		this.endChainInstruction = endChainInstruction;
+		this.previousIfInstr = previousIfInstr;
 	}
 	
 }

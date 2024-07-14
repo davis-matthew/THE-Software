@@ -35,13 +35,6 @@ public abstract class Instruction {
 		}
 	}
 	
-	// Return true if this is an If, ElseIf, or Else
-	public boolean isConditional() {
-		return this instanceof IfInstr ||
-				this instanceof ElseIfInstr ||
-				this instanceof ElseInstr;
-	}
-	
 	// Beautiful representation of this instruction
 	@Override
 	public String toString() {
@@ -196,21 +189,27 @@ public abstract class Instruction {
 
 		if (this instanceof IfInstr) {
 			IfInstr instr = (IfInstr)this;
-			s += " End=" + instr.endChainInstruction.id;
-			if (instr.nextChainedInstruction != null) {
-				s += " Chain=" + instr.nextChainedInstruction.id;
+			if (instr.endOfBlockInstr != null) {
+				s += " End=" + instr.endOfBlockInstr.id;
+			} else {
+				print("*****Null endOfBlockInstr found*****");
 			}
-		}
-		if (this instanceof ElseIfInstr) {
-			ElseIfInstr instr = (ElseIfInstr)this;
-			s += " End=" + instr.endChainInstruction.id;
-			if (instr.nextChainedInstruction != null) {
-				s += " Chain=" + instr.nextChainedInstruction.id;
+			if (instr.elseInstr != null) {
+				s += " Else=" + instr.elseInstr.id;
 			}
 		}
 		if (this instanceof ElseInstr) {
 			ElseInstr instr = (ElseInstr)this;
-			s += " End=" + instr.endChainInstruction.id;
+			if (instr.endOfBlockInstr != null) {
+				s += " End=" + instr.endOfBlockInstr.id;
+			} else {
+				print("*****Null endOfBlockInstr found*****");
+			}
+			if (instr.previousIfInstr != null) {
+				s += " PreviousIf=" + instr.previousIfInstr.id;
+			} else {
+				print("*****Null ifInstr found*****");
+			}
 		}
 		
 		return s;
@@ -271,12 +270,16 @@ public abstract class Instruction {
 			return "if";
 		} else if (this instanceof ElseInstr) {
 			return "else";
-		} else if (this instanceof ElseIfInstr) {
-			return "elseif";
 		} else {
 			new Exception("toSymbolForm not implemented yet for " + this).printStackTrace();
 		}
 		return null;
+	}
+	
+	// Return true if this is an If or Else
+	public boolean isConditional() {
+		return this instanceof IfInstr ||
+				this instanceof ElseInstr;
 	}
 	
 	// Return true if this instruction restricts the scope of the contents
@@ -285,15 +288,12 @@ public abstract class Instruction {
 				this instanceof FunctionDefInstr ||
 				this instanceof LoopInstr ||
 				this instanceof IfInstr ||
-				this instanceof ElseInstr ||
-				this instanceof ElseIfInstr;
+				this instanceof ElseInstr;
 	}
 	
 	// Return true if this instruction closes a scope block (such as end-while)
 	public boolean doesEndScope() {
-		return this instanceof EndBlockInstr ||
-				this instanceof ElseInstr ||
-				this instanceof ElseIfInstr;
+		return this instanceof EndBlockInstr;
 	}
 	
 	public String name() {
