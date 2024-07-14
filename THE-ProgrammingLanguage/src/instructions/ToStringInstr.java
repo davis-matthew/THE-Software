@@ -11,4 +11,10 @@ public class ToStringInstr extends Instruction {
 		this.arg = arg;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				arg
+		};
+	}
+	
 }

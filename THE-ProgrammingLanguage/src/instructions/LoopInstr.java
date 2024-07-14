@@ -17,4 +17,10 @@ public class LoopInstr extends Instruction {
 		this.wasThisADoWhileLoop = wasThisADoWhileLoop;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				endInstr
+		};
+	}
+	
 }

@@ -136,11 +136,6 @@ public abstract class Instruction {
 			ConcatInstr instr = (ConcatInstr)this;
 			s += "(" + instr.arg1.returnType + " " + instr.arg1.id + ", " + instr.arg2.returnType + " " + instr.arg2.id + ")";
 		}
-		if (this instanceof StoreInstr) {
-			StoreInstr instr = (StoreInstr)this;
-			s += "(" + instr.declareInstr.returnType + " " + instr.declareInstr.id + ", " +
-					   instr.valueToStore.returnType + " " + instr.valueToStore.id + ")";
-		}
 
 		// Unary operators
 		if (this instanceof BoolNotInstr) {
@@ -157,11 +152,49 @@ public abstract class Instruction {
 		}
 		if (this instanceof LoadInstr) {
 			LoadInstr instr = (LoadInstr)this;
-			s += "(" + instr.declareInstr.returnType + " " + instr.declareInstr.id + ")";
+			s += "(" + instr.instrThatReturnedPointer.returnType + " " + instr.instrThatReturnedPointer.id + ")";
 		}
 		if (this instanceof PrintInstr) {
 			PrintInstr instr = (PrintInstr)this;
 			s += "(" + instr.stringArg.returnType + " " + instr.stringArg.id + ")";
+		}
+		if (this instanceof IdentityInstr) {
+			IdentityInstr instr = (IdentityInstr)this;
+			s += "(" + instr.arg.returnType + " " + instr.arg.id + ")";
+		}
+		
+		// Other types of instructions
+		if (this instanceof StoreInstr) {
+			StoreInstr instr = (StoreInstr)this;
+			s += "(" + instr.instrThatReturnedPointer.returnType + " " + instr.instrThatReturnedPointer.id + ", " +
+					   instr.valueToStore.returnType + " " + instr.valueToStore.id + ")";
+		}
+		if (this instanceof GetElementInstr) {
+			GetElementInstr instr = (GetElementInstr)this;
+			s += "(" + instr.declareInstr.returnType + " " + instr.declareInstr.id;
+			for (int i = 0; i < instr.instructionsForIndices.length; i++) {
+				s += ", " + instr.instructionsForIndices[i].returnType + " " + instr.instructionsForIndices[i].id;
+			}
+			s += ")";
+		}
+		if (this instanceof AllocArrInstr) {
+			AllocArrInstr instr = (AllocArrInstr)this;
+			s += "(";
+			for (int i = 0; i < instr.dimensionSizes.length; i++) {
+				if (i != 0) {
+					s += ", ";
+				}
+				s += instr.dimensionSizes[i].returnType + " " + instr.dimensionSizes[i].id;
+			}
+			s += ")";
+		}
+		if (this instanceof ArrLengthInstr) {
+			ArrLengthInstr instr = (ArrLengthInstr)this;
+			s += "(" + instr.pointerInstr.returnType + " " + instr.pointerInstr.id;
+			if (!instr.getElementCount) {
+				s += ", " + instr.dimensionToRead.returnType + " " + instr.dimensionToRead.id;
+			}
+			s += ")";
 		}
 		
 		// Print the return type, if there is one
@@ -169,14 +202,20 @@ public abstract class Instruction {
 			s += "->" + returnType;
 		}
 		
+		// Print some stuff after the return
 		if (this instanceof FunctionCallInstr) {
 			FunctionCallInstr instr = (FunctionCallInstr)this;
 			s += " [call " + instr.functionThatWasCalled.name + "]";
 		}
-		
-		if (this instanceof DeclareInstr) {
-			DeclareInstr instr = (DeclareInstr)this;
+		if (this instanceof AllocVarInstr) {
+			AllocVarInstr instr = (AllocVarInstr)this;
 			s += " (" + instr.varName + " declared)";
+		}
+		if (this instanceof ArrLengthInstr) {
+			ArrLengthInstr instr = (ArrLengthInstr)this;
+			if (instr.getElementCount) {
+				s += " [all elements]";
+			}
 		}
 		
 		if (debugString != null && !debugString.isEmpty()) {
@@ -186,7 +225,7 @@ public abstract class Instruction {
 		if (parentInstruction != null) {
 			s += " Parent=" + parentInstruction.id;
 		}
-
+		
 		if (this instanceof IfInstr) {
 			IfInstr instr = (IfInstr)this;
 			if (instr.endOfBlockInstr != null) {
@@ -276,8 +315,8 @@ public abstract class Instruction {
 		return null;
 	}
 	
-	// Return true if this is an If or Else
-	public boolean isConditional() {
+	// Return true if this is an 'If' or 'Else'
+	public boolean isBranch() {
 		return this instanceof IfInstr ||
 				this instanceof ElseInstr;
 	}
@@ -291,6 +330,12 @@ public abstract class Instruction {
 				this instanceof ElseInstr;
 	}
 	
+	// Return true if this instruction has undetectable consequences.
+	// For example, system calls, print, and file manipulation.
+	public boolean hasSideEffect() {
+		return this instanceof PrintInstr;
+	}
+	
 	// Return true if this instruction closes a scope block (such as end-while)
 	public boolean doesEndScope() {
 		return this instanceof EndBlockInstr;
@@ -299,6 +344,9 @@ public abstract class Instruction {
 	public String name() {
 		return this.getClass().getSimpleName().replace("Instr", "");
 	}
+	
+	// Return all instructions that this instruction depends on.
+	public abstract Instruction[] getAllArgs();
 	
 	// Convenient print
 	protected static void print(Object o) {

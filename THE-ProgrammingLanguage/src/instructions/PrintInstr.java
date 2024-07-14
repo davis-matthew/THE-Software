@@ -8,4 +8,10 @@ public class PrintInstr extends Instruction {
 		super(parentInstruction, null, debugString);
 		this.stringArg = arg;
 	}
+	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				stringArg
+		};
+	}
 }

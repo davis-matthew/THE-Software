@@ -9,4 +9,9 @@ public class BreakInstr extends Instruction {
 		this.loopStartInstr = loopStartInstr;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				loopStartInstr
+		};
+	}
 }

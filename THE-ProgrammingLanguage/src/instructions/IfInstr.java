@@ -54,4 +54,10 @@ public class IfInstr extends Instruction {
 		}
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				endOfBlockInstr, elseInstr, conditionInstr
+		};
+	}
+	
 }

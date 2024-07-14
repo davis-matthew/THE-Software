@@ -741,14 +741,13 @@ public class ParseUtil {
 			// If this is a valid character
 			if (isLetter(c) || c == '_' || c == '$' || (i > firstIndex && isDigit(c))) {
 				foundValidChar = true;
+				endIndex = i + 1;
 			} else if (foundValidChar) {
-				endIndex = i;
 				break;
 			}
 		}
 		
-		// If the beginning and the end are the same, then there is no content
-		if (endIndex == firstIndex) {
+		if (!foundValidChar) {
 			return null;
 		}
 		

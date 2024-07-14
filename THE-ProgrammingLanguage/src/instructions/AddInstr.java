@@ -14,4 +14,9 @@ public class AddInstr extends Instruction {
 		this.returnType = Compiler.getReturnTypeFromInstructionAndOperands(this, arg1.returnType, arg2.returnType);
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				arg1, arg2
+		};
+	}
 }

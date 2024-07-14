@@ -11,4 +11,8 @@ public class AllocArrInstr extends Instruction {
 		this.dimensionSizes = dimensionSizes;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return dimensionSizes;
+	}
+	
 }

@@ -12,4 +12,10 @@ public class FunctionCallInstr extends Instruction {
 		this.functionThatWasCalled = functionThatWasCalled;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				// TODO need to add the arguments to the function here!
+		};
+	}
+	
 }

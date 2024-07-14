@@ -6,4 +6,10 @@ public class EndBlockInstr extends Instruction {
 		super(parentInstruction, null, debugString);
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				
+		};
+	}
+	
 }

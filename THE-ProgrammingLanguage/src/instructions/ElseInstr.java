@@ -13,4 +13,10 @@ public class ElseInstr extends Instruction {
 		this.previousIfInstr = previousIfInstr;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				previousIfInstr, endOfBlockInstr
+		};
+	}
+	
 }

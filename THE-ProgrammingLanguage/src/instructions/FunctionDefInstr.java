@@ -13,4 +13,10 @@ public class FunctionDefInstr extends Instruction {
 		this.functionThatWasDefined = functionThatWasDefined;
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				endBlockInstr
+		};
+	}
+	
 }

@@ -244,6 +244,15 @@ public class Type {
 		return new Type(baseType, dimensions, isArray, pointerDepth + 1);
 	}
 	
+	// Return a copy of the type being pointed to by this type.
+	// int* -> int
+	public Type makeTypePointedToByThis() {
+		if (pointerDepth <= 0) {
+			printError("Cannot dereference non-reference type " + this);
+		}
+		return new Type(baseType, dimensions, isArray, pointerDepth - 1);
+	}
+	
 	// Return a copy of this type, but with isArray = true
 	// int -> int[]
 	public Type makeArrayOfThis(int numDimensions) {

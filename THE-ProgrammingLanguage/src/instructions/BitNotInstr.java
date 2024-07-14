@@ -12,4 +12,10 @@ public class BitNotInstr extends Instruction {
 		this.returnType = Compiler.getReturnTypeFromInstructionAndOperands(this, arg.returnType, null);
 	}
 	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				arg
+		};
+	}
+	
 }

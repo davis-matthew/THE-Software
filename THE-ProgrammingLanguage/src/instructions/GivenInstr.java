@@ -11,4 +11,10 @@ public class GivenInstr extends Instruction {
 		super(parentInstruction, type, debugString);
 		this.rawValue = rawValue;
 	}
+	
+	public Instruction[] getAllArgs() {
+		return new Instruction[] {
+				
+		};
+	}
 }
