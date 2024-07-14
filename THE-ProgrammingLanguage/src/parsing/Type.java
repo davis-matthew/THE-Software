@@ -15,8 +15,6 @@ public class Type {
 	public static final Type Float = new Type(BaseType.Float);
 	public static final Type Double = new Type(BaseType.Double);
 	public static final Type String = new Type(BaseType.String);
-	public static final Type Void = new Type(BaseType.Void);
-	
 	
 	public final BaseType baseType; // The fundamental type of this (possibly) composite type
 	public final int dimensions;	// For array type only
@@ -34,7 +32,7 @@ public class Type {
 	}
 	
 	// Instantiate a type from the given string.
-	// For example ***int[,,] or just bool
+	// For example int*[,,]** or just bool
 	public Type(String s) {
 		
 		int baseTypeEndIndex = 0;
@@ -163,8 +161,6 @@ public class Type {
 			return BaseType.Double;
 		} else if (s.equals("string")) {
 			return BaseType.String;
-		} else if (s.equals("void")) {
-			return BaseType.Void;
 		} else {
 			new Exception("Base type " + s + " not implemented").printStackTrace();
 			return null;
@@ -172,7 +168,7 @@ public class Type {
 	}
 	
 	// Return the type that this array contains
-	public Type getArrayContainedType() {
+	public Type getArrayElementType() {
 		if (!isArray) {
 			new Exception("getArrayContainedType can only be called on array types").printStackTrace();
 			return null;
@@ -243,9 +239,21 @@ public class Type {
 	}
 	
 	// Return a copy of this type, but with pointerDepth increased by 1.
-	// int[] -> int*[]
+	// int[] -> int[]*
 	public Type makePointerToThis() {
 		return new Type(baseType, dimensions, isArray, pointerDepth + 1);
+	}
+	
+	// Return a copy of this type, but with isArray = true
+	// int -> int[]
+	public Type makeArrayOfThis(int numDimensions) {
+		if (isArray) {
+			printError("Arrays of arrays are not implemented yet");
+		}
+		if (pointerDepth != 0) {
+			printError("Arrays of pointers not implemented yet");
+		}
+		return new Type(baseType, numDimensions, true, 0);
 	}
 	
 	@Override
@@ -254,17 +262,16 @@ public class Type {
 		
 		s += baseType.name().toLowerCase();
 		
-		for (int i = 0; i < pointerDepth; i++) {
-			s += "*";
-		}
-		
 		if (isArray) {
 			s += "[";
 			for (int i = 0; i < dimensions - 1; i++) {
 				s += ",";
 			}
 			s += "]";
-			return s;
+		}
+		
+		for (int i = 0; i < pointerDepth; i++) {
+			s += "*";
 		}
 		
 		return s;

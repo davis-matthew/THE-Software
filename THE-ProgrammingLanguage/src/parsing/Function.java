@@ -4,14 +4,16 @@ package parsing;
 
 public class Function {
 	public String name; // User-given name of this function
-	public Type[] returnTypes;
+	public Type returnType;
 	public Type[] argTypes;
+	public String[] argNames;
 	
 	// Create a new function of a certain name and type
-	public Function(String name, Type[] returnTypes, Type[] argTypes) {
+	public Function(String name, Type returnType, Type[] argTypes, String[] argNames) {
 		this.name = name;
-		this.returnTypes = returnTypes;
+		this.returnType = returnType;
 		this.argTypes = argTypes;
+		this.argNames = argNames;
 	}
 	
 	// Return true if this function is distinguishable from the given

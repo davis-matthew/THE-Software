@@ -1,6 +1,5 @@
 package parsing;
 
 public enum BaseType {
-	Bool, Long, Int, Float, Double,
-	String, Void;
+	Bool, Long, Int, Float, Double, String;
 }

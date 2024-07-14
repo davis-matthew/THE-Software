@@ -509,8 +509,8 @@ public class ParseUtil {
 		return false;
 	}
 	
-	// Return true if this is (probably) an array reference (Read)
-	static boolean isArrayReference(String s) {
+	// Return true if this is (probably) an array element access (Load from a pointer to the element)
+	static boolean isArrayElementAccess(String s) {
 		// Find the first opening bracket
 		for (int i = 1; i < s.length()-1; i++) {
 			if (s.charAt(i) == '[') {
@@ -573,9 +573,8 @@ public class ParseUtil {
 					
 					// Separate the data into the individual arguments (the dimensions of the array)
 					String[] args = separateArguments(s.substring(length+1, endIndex));
-					final int dimensions = args.length;
 					
-					return new Object[] {new Type(dataTypes[i], dimensions), args};
+					return new Object[] {new Type(dataTypes[i]), args};
 				}
 			}
 		}

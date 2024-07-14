@@ -7,6 +7,48 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 
+import instructions.AddInstr;
+import instructions.AllocArrInstr;
+import instructions.ArrLengthInstr;
+import instructions.BitAndInstr;
+import instructions.BitNotInstr;
+import instructions.BitOrInstr;
+import instructions.BoolAndInstr;
+import instructions.BoolNotInstr;
+import instructions.BoolOrInstr;
+import instructions.BreakInstr;
+import instructions.ConcatInstr;
+import instructions.ContinueInstr;
+import instructions.DeclareInstr;
+import instructions.DivideInstr;
+import instructions.ElseIfInstr;
+import instructions.ElseInstr;
+import instructions.EndBlockInstr;
+import instructions.EqualInstr;
+import instructions.FunctionCallInstr;
+import instructions.FunctionDefInstr;
+import instructions.GetElementInstr;
+import instructions.GetPointerInstr;
+import instructions.GivenInstr;
+import instructions.GreaterEqualInstr;
+import instructions.GreaterInstr;
+import instructions.IfInstr;
+import instructions.Instruction;
+import instructions.LessEqualInstr;
+import instructions.LessInstr;
+import instructions.LoadInstr;
+import instructions.LoopInstr;
+import instructions.ModuloInstr;
+import instructions.MultInstr;
+import instructions.NotEqualInstr;
+import instructions.PowerInstr;
+import instructions.PrintInstr;
+import instructions.RefEqualInstr;
+import instructions.RefNotEqualInstr;
+import instructions.StartBlockInstr;
+import instructions.StoreInstr;
+import instructions.SubInstr;
+import instructions.ToStringInstr;
 import passes.ArrayWritesToRefPass;
 import passes.ConvertToQuadPass;
 
@@ -14,7 +56,7 @@ import static parsing.ErrorHandler.*;
 
 // Created by Daniel Williams
 // Created on May 31, 2020
-// Last updated on June 20, 2024
+// Last updated on July 13, 2024
 
 // A fast programming language that maybe is good.
 
@@ -59,15 +101,24 @@ public class Compiler {
 			currentParsingLineNumber++;
 		}
 		
+
+		// Print out all of the instructions to the console
+		print("--------- Initial Parse ---------\n");
+		for (int i = 0; i < instructions.size(); i++) {
+			print(instructions.get(i));
+		}
+		print("");
+		
 		// Check for invalid scope
 		if (lines.length > currentParsingLineNumber) {
 			printError("Extra ']' in program");
 		}
 		
-		// Replace all Reassign-to-arrays to WriteToReferences
+		// Replace all Store-to-arrays to WriteToReferences
 		ArrayWritesToRefPass.convertReferenceWritesPass(instructions);
 		
 		// Print out all of the instructions to the console
+		print("--------- After ArrayWritesToRefPass ---------\n");
 		for (int i = 0; i < instructions.size(); i++) {
 			print(instructions.get(i));
 		}
@@ -75,8 +126,8 @@ public class Compiler {
 
 		// Convert all instructions to QuadIR
 		ArrayList<QuadInstruction> quadInstructions = ConvertToQuadPass.convertToQuadInstructions(instructions);
-		
-		print("Quad instructions:");
+
+		print("--------- Quad Instructions ---------\n");
 		for (int i = 0; i < quadInstructions.size(); i++) {
 			print(quadInstructions.get(i));
 		}
@@ -97,40 +148,29 @@ public class Compiler {
 			
 		} else if (line.equals("break") || line.equals("continue")) { // Break or continue in loop
 			
-			Instruction instr;
-			if (line.equals("break")) {
-				instr = new Instruction(InstructionType.Break);
-			} else {
-				instr = new Instruction(InstructionType.Continue);
-			}
-			
-			instr.stringRepresentation = instr.instructionType.toSymbolForm();
-			instr.parentInstruction = parentInstruction;
-
 			// Find the nearest ancestor loop that contains this statement
-			Instruction parentLoop = findNearestAncestorLoop(parentInstruction);
+			LoopInstr parentLoop = findNearestAncestorLoop(parentInstruction);
 			if (parentLoop == null) {
-				printError(ParseUtil.capitalize(instr.instructionType.toSymbolForm())
-						+ "statement must be within a loop");
+				printError(ParseUtil.capitalize(line) + "-statement must be within a loop");
 			}
 			
-			instr.setArgs(parentLoop);
-			
-			instructions.add(instr);
+			if (line.equals("break")) {
+				BreakInstr instr = new BreakInstr(parentInstruction, "break", parentLoop);
+				instructions.add(instr);
+			} else {
+				ContinueInstr instr = new ContinueInstr(parentInstruction, "continue", parentLoop);
+				instructions.add(instr);
+			}
 			
 		} else if (line.equals("[")) { // Start a deeper scope
 			
-			Instruction instr = new Instruction(InstructionType.StartBlock);
-			instr.stringRepresentation = "scope start";
-			instr.parentInstruction = parentInstruction;
-			instructions.add(instr);
+			StartBlockInstr startBlockInstr = new StartBlockInstr(parentInstruction, "scope start");
+			instructions.add(startBlockInstr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "for")) { // For-loop
 			
 			// This instruction restricts the scope of the whole for-loop and initialization
-			Instruction startBlockInstr = new Instruction(InstructionType.StartBlock);
-			startBlockInstr.stringRepresentation = "for-loop scope start";
-			startBlockInstr.parentInstruction = parentInstruction;
+			StartBlockInstr startBlockInstr = new StartBlockInstr(parentInstruction, "for-loop scope start");
 			instructions.add(startBlockInstr);
 			
 			// Get the contents of the for-loop header
@@ -139,7 +179,7 @@ public class Compiler {
 			String[] args = ParseUtil.separateArguments(expressionContent);
 			
 			// Create the increment, start bound, and stop bound instructions
-			Variable arrayVar;
+			Type arrayVarType;
 			String startBoundVariableString;
 			String loopBreakIfStatementString;
 			String incrementString;
@@ -178,23 +218,29 @@ public class Compiler {
 				String forEachVarName = loopVarDeclarationString.substring(firstSpaceIndex).trim();
 				
 				// Try to find an existing variable in this scope with the same name
-				Variable existingVar = findVariableByName(startBlockInstr, forEachVarName);
+				Instruction existingVar = findInstructionThatDeclaredVariable(startBlockInstr, forEachVarName);
 				if (existingVar != null) {
 					printError("Variable '" + forEachVarName + "' has already been declared in this scope");
 				}
 				
 				// Try to find an existing variable in this scope with the same name
 				String arrayVarName = forEachArgs[1];
-				arrayVar = findVariableByName(startBlockInstr, arrayVarName);
+				DeclareInstr arrayVarDeclare = findInstructionThatDeclaredVariable(startBlockInstr, arrayVarName);
+				
+				if (arrayVarDeclare == null) {
+					printError("Variable " + arrayVarName + " has not been declared");
+				}
+				
+				arrayVarType = arrayVarDeclare.varType;
 				
 				// Make sure the array variable is an array type
-				if (!arrayVar.type.isArray) {
+				if (!arrayVarType.isArray) {
 					printError("'" + arrayVarName + "' must be an array type");
 				}
 				
 				// Make sure the array values may be cast to the reference variable type
-				if (!arrayVar.type.getArrayContainedType().canImplicitlyCastTo(forEachVarType)) {
-					printError("Cannot implicitly cast from " + arrayVar.type.baseType + " to " + forEachVarType);
+				if (!arrayVarType.getArrayElementType().canImplicitlyCastTo(forEachVarType)) {
+					printError("Cannot implicitly cast from " + arrayVarType.baseType + " to " + forEachVarType);
 				}
 				
 				loopBreakIfStatementString = "if " + loopVarName + " >= #" + arrayVarName;
@@ -250,28 +296,28 @@ public class Compiler {
 			
 			// Create the looping construct.
 			// This instruction precedes all content of the loop that is repeated.
-			Instruction loopStartLabel = new Instruction(InstructionType.Loop);
-			loopStartLabel.stringRepresentation = "for-loop start";
-			loopStartLabel.parentInstruction = startBlockInstr;
+			LoopInstr loopStartLabel = new LoopInstr(startBlockInstr, "for-loop start", false);
 			instructions.add(loopStartLabel);
 			
 			// Create the loop break condition.
 			// Parse all the instructions to test whether we need to break this loop.
 			// This will return a reference to the if-statement.
-			Instruction lastInstructionFromIfCondition = parseLine(loopBreakIfStatementString);
+			Instruction lastInstructionFromIfConditionAny = parseLine(loopBreakIfStatementString);
 			
-			Instruction boundBreak = new Instruction(InstructionType.Break);
-			boundBreak.stringRepresentation = "break for";
-			boundBreak.setArgs(loopStartLabel);
-			boundBreak.parentInstruction = lastInstructionFromIfCondition;
+			// Make sure we parsed an if-condition
+			if (!(lastInstructionFromIfConditionAny instanceof IfInstr)) {
+				printError("Auto-generated break-statement must be contained inside If-statement for a loop");
+			}
+			
+			IfInstr lastInstructionFromIfCondition = (IfInstr)lastInstructionFromIfConditionAny;
+			
+			BreakInstr boundBreak = new BreakInstr(lastInstructionFromIfCondition, "break for", loopStartLabel);
 			instructions.add(boundBreak);
 			
-			Instruction ifBoundEnd = new Instruction(InstructionType.EndBlock);
-			ifBoundEnd.stringRepresentation = "end if";
-			ifBoundEnd.parentInstruction = lastInstructionFromIfCondition;
+			EndBlockInstr ifBoundEnd = new EndBlockInstr(lastInstructionFromIfCondition, "end if");
 			instructions.add(ifBoundEnd);
 			
-			lastInstructionFromIfCondition.endInstruction = ifBoundEnd;
+			lastInstructionFromIfCondition.endChainInstruction = ifBoundEnd;
 			
 			// Reassign the for-each loop reference variable, if this is a for-each loop
 			if (forEachAssignment != null) {
@@ -284,21 +330,18 @@ public class Compiler {
 		} else if (line.equals("do")) { // Do-while loop (header part)
 			
 			// Create the loop header instruction (generic for all loops)
-			Instruction instr = new Instruction(InstructionType.Loop);
-			instr.stringRepresentation = "do loop start";
-			instr.wasThisADoWhileLoop = true;
-			instr.parentInstruction = parentInstruction;
+			LoopInstr instr = new LoopInstr(parentInstruction, "do loop start", true);
 			instructions.add(instr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "] while")) { // Do-while loop (end part)
-
-			Instruction doStartInstruction = parentInstruction;
 			
 			// Check that this block was opened by a do-while loop header
-			if (doStartInstruction.instructionType != InstructionType.Loop ||
-					!doStartInstruction.wasThisADoWhileLoop) {
+			if (!(parentInstruction instanceof LoopInstr) ||
+					!((LoopInstr)parentInstruction).wasThisADoWhileLoop) {
 				printError("Do-While footer must be preceded by a Do-While header");
 			}
+
+			LoopInstr doStartInstruction = (LoopInstr)parentInstruction;
 			
 			// Get the contents of the conditional
 			int conditionStartIndex = 7;
@@ -313,36 +356,22 @@ public class Compiler {
 			Instruction lastInstruction = parseExpression(parentInstruction, expressionContent);
 			
 			// Invert the truth of the last instruction in the break condition
-			Instruction notInstr = new Instruction(InstructionType.Not);
-			notInstr.stringRepresentation = notInstr.instructionType.toSymbolForm() +
-					"(" + expressionContent + ")";
-			notInstr.setArgs(lastInstruction);
-			notInstr.returnType = Type.Bool;
-			notInstr.parentInstruction = doStartInstruction;
+			BoolNotInstr notInstr = new BoolNotInstr(doStartInstruction, "!(" + expressionContent + ")", lastInstruction);
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
-			Instruction ifInstr = new Instruction(InstructionType.If);
-			ifInstr.stringRepresentation = notInstr.instructionType.toSymbolForm() +
-					"(" + expressionContent + ")";
-			ifInstr.setArgs(notInstr);
-			ifInstr.parentInstruction = doStartInstruction;
+			IfInstr ifInstr = new IfInstr(doStartInstruction, "if " + notInstr.debugString, notInstr, null, null);
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
-			Instruction breakInstr = new Instruction(InstructionType.Break);
-			breakInstr.stringRepresentation = "break";
-			breakInstr.parentInstruction = ifInstr;
-			breakInstr.setArgs(doStartInstruction);
+			BreakInstr breakInstr = new BreakInstr(ifInstr, "break", doStartInstruction);
 			instructions.add(breakInstr);
 			
 			// Create the EndBlock for this If-block
-			Instruction endIf = new Instruction(InstructionType.EndBlock);
-			endIf.stringRepresentation = "end if";
-			endIf.parentInstruction = ifInstr;
+			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
 			instructions.add(endIf);
 			
-			ifInstr.endInstruction = endIf;
+			ifInstr.endChainInstruction = endIf;
 			
 			// Make sure the return type of the condition is boolean
 			Type operandType = lastInstruction.returnType;
@@ -350,20 +379,15 @@ public class Compiler {
 				printError("Cannot implicitly cast from " + operandType + " to " + Type.Bool);
 			}
 			
-			Instruction doEndInstr = new Instruction(InstructionType.EndBlock);
-			doEndInstr.stringRepresentation = "end do-while";
-			doEndInstr.setArgs(lastInstruction);
-			doEndInstr.parentInstruction = doStartInstruction;
+			EndBlockInstr doEndInstr = new EndBlockInstr(doStartInstruction, "end do-while");
 			instructions.add(doEndInstr);
 			
-			// Mark this as the end of the DoStart instruction
-			doStartInstruction.endInstruction = doEndInstr;
+			// Mark this as the end of the Loop instruction
+			doStartInstruction.endInstr = doEndInstr;
 			
 		} else if (ParseUtil.doesLineStartWith(line, "while")) { // While loop
 			
-			Instruction loopStartLabel = new Instruction(InstructionType.Loop);
-			loopStartLabel.stringRepresentation = "while loop start";
-			loopStartLabel.parentInstruction = parentInstruction;
+			LoopInstr loopStartLabel = new LoopInstr(parentInstruction, "while loop start", true);
 			instructions.add(loopStartLabel);
 			
 			// Get the contents of the conditional
@@ -378,6 +402,10 @@ public class Compiler {
 			// Get the instructions for the content of this assignment
 			Instruction lastInstruction = parseExpression(loopStartLabel, expressionContent);
 			
+			if (lastInstruction.returnType == null) {
+				printError("Loop condition must return a " + Type.Bool);
+			}
+			
 			// Make sure the return type of the "While" condition is a boolean
 			Type operandType = lastInstruction.returnType;
 			if (!operandType.canImplicitlyCastTo(Type.Bool)) {
@@ -385,36 +413,22 @@ public class Compiler {
 			}
 			
 			// Invert the truth of the last instruction in the break condition
-			Instruction notInstr = new Instruction(InstructionType.Not);
-			notInstr.stringRepresentation = notInstr.instructionType.toSymbolForm() +
-					"(" + expressionContent + ")";
-			notInstr.setArgs(lastInstruction);
-			notInstr.returnType = Type.Bool;
-			notInstr.parentInstruction = loopStartLabel;
+			BoolNotInstr notInstr = new BoolNotInstr(loopStartLabel, "!(" + expressionContent + ")", lastInstruction);
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
-			Instruction ifInstr = new Instruction(InstructionType.If);
-			ifInstr.stringRepresentation = notInstr.instructionType.toSymbolForm() +
-					"(" + expressionContent + ")";
-			ifInstr.setArgs(notInstr);
-			ifInstr.parentInstruction = loopStartLabel;
+			IfInstr ifInstr = new IfInstr(loopStartLabel, "if !(" + expressionContent + ")", notInstr, null, null);
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
-			Instruction breakInstr = new Instruction(InstructionType.Break);
-			breakInstr.stringRepresentation = "break";
-			breakInstr.parentInstruction = ifInstr;
-			breakInstr.setArgs(loopStartLabel);
+			BreakInstr breakInstr = new BreakInstr(ifInstr, "break while", loopStartLabel);
 			instructions.add(breakInstr);
 			
 			// Create the EndBlock for this If-block
-			Instruction endIf = new Instruction(InstructionType.EndBlock);
-			endIf.stringRepresentation = "end if";
-			endIf.parentInstruction = ifInstr;
+			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
 			instructions.add(endIf);
 			
-			ifInstr.endInstruction = endIf;
+			ifInstr.endChainInstruction = endIf;
 			
 		} else if (ParseUtil.doesLineStartWith(line, "if")  ||
 					ParseUtil.doesLineStartWith(line, "elseif")) { // If-statement or ElseIf-statement
@@ -425,37 +439,15 @@ public class Compiler {
 			// Find the last If or ElseIf instruction that hasn't been connected to an end instruction.
 			Instruction precedingChainInstruction = null; // Only use for ElseIf
 			if (isElseIf) {
-				if (parentInstruction.instructionType == InstructionType.If ||
-					parentInstruction.instructionType == InstructionType.ElseIf) {
+				if (parentInstruction instanceof IfInstr ||
+					parentInstruction instanceof ElseIfInstr) {
 					
 					precedingChainInstruction = parentInstruction;
 				} else {
-					printError("ElseIf block not preceded by If or ElseIf block");
+					printError("Else-if block not preceded by If or Else-if block");
 				}
 			}
-			
-			// More of this is defined below
-			Instruction ifInstr = new Instruction(isElseIf ? InstructionType.ElseIf : InstructionType.If);
-			
-			// Mark the end of the previous chaining instruction
-			if (isElseIf) {
-				// Create the EndBlock to end the preceding chained instruction
-				Instruction previousEndInstr = new Instruction(InstructionType.EndBlock);
-				previousEndInstr.stringRepresentation = "end " + precedingChainInstruction.instructionType;
-				previousEndInstr.parentInstruction = precedingChainInstruction;
-				instructions.add(previousEndInstr);
-				
-				// Mark the end of the previous chaining instruction
-				precedingChainInstruction.endInstruction = previousEndInstr;
-				
-				// Mark this as the next instruction in the chain from the previous
-				precedingChainInstruction.nextChainedInstruction = ifInstr;
-
-				ifInstr.parentInstruction = precedingChainInstruction.parentInstruction;
-			} else {
-				ifInstr.parentInstruction = parentInstruction;
-			}
-			
+		
 			// Get the contents of the conditional
 			int conditionStartIndex = 2;
 			if (isElseIf) {
@@ -465,7 +457,7 @@ public class Compiler {
 			
 			// Detect an empty conditional statement
 			if (expressionContent.trim().isEmpty()) {
-				String instructionType = isElseIf ? "ElseIf" : "If";
+				String instructionType = isElseIf ? "Else-if" : "If";
 				printError("Boolean expression missing in " + instructionType);
 			}
 			
@@ -477,16 +469,39 @@ public class Compiler {
 			if (!operandType.canImplicitlyCastTo(Type.Bool)) {
 				printError("Cannot implicitly cast from " + operandType + " to " + Type.Bool);
 			}
+			
+			// Mark the end of the previous chaining instruction
+			if (isElseIf) {
+				
+				// Create the EndBlock to end the preceding chained instruction
+				EndBlockInstr previousEndInstr = new EndBlockInstr(
+						precedingChainInstruction, "end " + precedingChainInstruction.name());
+				instructions.add(previousEndInstr);
 
-			ifInstr.stringRepresentation = expressionContent;
-			ifInstr.setArgs(lastInstruction);
-			instructions.add(ifInstr);
+				IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, null, null);
+				instructions.add(ifInstr);
+				
+				// Mark the end of the previous chaining instruction and
+				// mark this as the next instruction in the chain from the previous.
+				if (precedingChainInstruction instanceof IfInstr) {
+					((IfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
+					((IfInstr)precedingChainInstruction).nextChainedInstruction = ifInstr;
+				} else if (precedingChainInstruction instanceof ElseIfInstr) {
+					((ElseIfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
+					((ElseIfInstr)precedingChainInstruction).nextChainedInstruction = ifInstr;
+				} else {
+					printError(precedingChainInstruction.name() + " cannot be followed in a chain by If or Else-if");
+				}
+			} else {
+				IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, null, null);
+				instructions.add(ifInstr);
+			}
 			
 		} else if (line.equals("else")) { // This is an else chained onto an if
 			
 			Instruction precedingChainInstruction = null;
-			if (parentInstruction.instructionType == InstructionType.If ||
-				parentInstruction.instructionType == InstructionType.ElseIf) {
+			if (parentInstruction instanceof IfInstr ||
+				parentInstruction instanceof ElseIfInstr) {
 				
 				precedingChainInstruction = parentInstruction;
 			} else {
@@ -494,22 +509,25 @@ public class Compiler {
 			}
 			
 			// Create the EndBlock to end of the previous chained instruction
-			Instruction previousEndInstr = new Instruction(InstructionType.EndBlock);
-			previousEndInstr.stringRepresentation = "end " + precedingChainInstruction.instructionType;
-			previousEndInstr.parentInstruction = precedingChainInstruction;
+			EndBlockInstr previousEndInstr = new EndBlockInstr(
+					precedingChainInstruction, "end " + precedingChainInstruction.name());
 			instructions.add(previousEndInstr);
 			
-			// Mark the end of the previous chaining instruction
-			precedingChainInstruction.endInstruction = previousEndInstr;
-			
 			// Create the Else block
-			Instruction elseInstr = new Instruction(InstructionType.Else);
-			elseInstr.stringRepresentation = "else";
+			ElseInstr elseInstr = new ElseInstr(parentInstruction, "else", null);
+			elseInstr.debugString = "else";
 			elseInstr.parentInstruction = precedingChainInstruction.parentInstruction;
 			instructions.add(elseInstr);
-			
-			// Mark the next instruction in the chain from the previous
-			precedingChainInstruction.nextChainedInstruction = elseInstr;
+
+			// Mark the end of the previous chaining instruction and
+			// mark this as the next instruction in the chain from the previous.
+			if (precedingChainInstruction instanceof IfInstr) {
+				((IfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
+				((IfInstr)precedingChainInstruction).nextChainedInstruction = elseInstr;
+			} else if (precedingChainInstruction instanceof ElseIfInstr) {
+				((ElseIfInstr)precedingChainInstruction).endChainInstruction = previousEndInstr;
+				((ElseIfInstr)precedingChainInstruction).nextChainedInstruction = elseInstr;
+			}
 		
 		} else if (line.equals("]")) { // Descope (for closing a loop, if, elseif, etc.)
 			
@@ -517,27 +535,32 @@ public class Compiler {
 			Instruction openingBlockInstr = parentInstruction;
 			
 			// If the opening to this block was a do-while loop, then we're missing the "while (condition)" part
-			if (openingBlockInstr.wasThisADoWhileLoop) {
-				printError("Do-While must be closed with 'while <condition>'.");
-			}
-			
-			// If the opening block has some code that needs to be injected before the closing block,
-			// then parse and add it here.
-			if (openingBlockInstr.codeToInjectAtEndOfBlock != null) {
-				// Parse the line that increments the loop variable
-				parseLine(openingBlockInstr.codeToInjectAtEndOfBlock);
+			if (openingBlockInstr instanceof LoopInstr) {
+				LoopInstr loopInstr = (LoopInstr)openingBlockInstr;
 				
-				// No longer needed.
-				openingBlockInstr.codeToInjectAtEndOfBlock = null;
+				if (loopInstr.wasThisADoWhileLoop) {
+					printError("Do-While must be closed with 'while <condition>'.");
+				}
+			
+				// If the opening block has some code that needs to be injected before the closing block,
+				// then parse and add it here.
+				if (loopInstr.codeToInjectAtEndOfBlock != null) {
+					// Parse the line that increments the loop variable
+					parseLine(loopInstr.codeToInjectAtEndOfBlock);
+					
+					// No longer needed.
+					loopInstr.codeToInjectAtEndOfBlock = null;
+				}
 			}
 			
 			// Create the EndBlock to end this else-statement
-			Instruction endInstr = new Instruction(InstructionType.EndBlock);
-			endInstr.stringRepresentation = "end " + openingBlockInstr.stringRepresentation;
-			endInstr.parentInstruction = openingBlockInstr;
+			EndBlockInstr endInstr = new EndBlockInstr(openingBlockInstr, "end " + openingBlockInstr.debugString);
 			instructions.add(endInstr);
 			
-			openingBlockInstr.endInstruction = endInstr;
+			// Mark a reference to the end of the loop
+			if (openingBlockInstr instanceof LoopInstr) {
+				((LoopInstr)openingBlockInstr).endInstr = endInstr;
+			}
 			
 		} else if (ParseUtil.getFirstDataType(line) != null) { // If this is a declaration of some sort
 			
@@ -567,8 +590,7 @@ public class Compiler {
 			if (isFunctionDeclaration) {
 				
 				// Cannot define a function inside anything except another function or main program
-				if (parentInstruction != null &&
-						parentInstruction.instructionType != InstructionType.FunctionDefinition) {
+				if (parentInstruction != null && !(parentInstruction instanceof FunctionDefInstr)) {
 					printError("Functions may only be defined inside other functions or main program");
 				}
 				
@@ -603,43 +625,20 @@ public class Compiler {
 					printError("Function '" + varName + "' has already been declared in this scope");
 				}
 				
-				// Create the routine definition
-				Instruction routineInstr = new Instruction(InstructionType.FunctionDefinition);
-				routineInstr.stringRepresentation = line;
-				routineInstr.functionThatWasDefined = function;
-				routineInstr.parentInstruction = parentInstruction;
-				routineInstr.returnType = varType; // TODO add multiple returns
-				instructions.add(routineInstr);
+				// Create the routine definition.
+				// TODO add multiple returns.
+				FunctionDefInstr funcDefInstr = new FunctionDefInstr(parentInstruction, line, function);
+				instructions.add(funcDefInstr);
 				
-				Instruction[] args = new Instruction[params.length];
-				for (int i = 0; i < params.length; i++) {
-					
-					// Create the parameter variable
-					Variable var = new Variable(paramNames[i], paramTypes[i]);
-					
-					Instruction instr = new Instruction(InstructionType.Declare);
-					instr.stringRepresentation = var.type + " " + var.name;
-					instr.returnType = var.type.makePointerToThis();
-					instr.variableThatWasChanged = var;
-					instr.parentInstruction = routineInstr;
-					instructions.add(instr);
-					
-					var.instructionThatDeclared = instr;
-					
-					args[i] = instr;
-				}
-				routineInstr.setArgs(args);
+				// TODO study LLVM to figure out how to pass arguments into the function
 				
 			} else { // Not a function declaration
 				
 				// Try to find an existing variable in this scope that is in naming conflict with this one
-				Variable existingVar = findVariableByName(parentInstruction, varName);
-				if (existingVar != null) {
+				Instruction previousDeclaration = findInstructionThatDeclaredVariable(parentInstruction, varName);
+				if (previousDeclaration != null) {
 					printError("Variable '" + varName + "' has already been declared in this scope");
 				}
-				
-				// Create the variable
-				Variable var = new Variable(varName, varType);
 				
 				StringStartEnd assignmentInfo = ParseUtil.getFirstAssignmentOperator(line, varEndIndex);
 				String operator = null;
@@ -658,14 +657,8 @@ public class Compiler {
 					// Make sure there aren't excess characters at the end of this line
 					ParseUtil.checkForExcessCharacters(line, varName);
 					
-					Instruction instr = new Instruction(InstructionType.Declare);
-					instr.stringRepresentation = varType + " " + varName;
-					instr.returnType = varType.makePointerToThis(); // Pointer of type 'varType'
-					instr.variableThatWasChanged = var;
-					instr.parentInstruction = parentInstruction;
+					DeclareInstr instr = new DeclareInstr(parentInstruction, varType + " " + varName, varType, varName);
 					instructions.add(instr);
-					
-					var.instructionThatDeclared = instr;
 					
 				} else if (operator.equals("=")) { // If this is an allocation and assignment
 					
@@ -678,26 +671,19 @@ public class Compiler {
 						printError("Cannot implicitly cast from " + operandType + " to " + varType);
 					}
 					
-					// If this is an array, then make sure the dimension matches
-					if (varType.isArray && varType.dimensions != lastInstruction.args.length) {
-						printError("Unmatching array dimensions");
-					}
+					DeclareInstr declareInstr = new DeclareInstr(parentInstruction, varType + " " + varName, varType, varName);
+					instructions.add(declareInstr);
 					
-					Instruction instr = new Instruction(InstructionType.Initialize);
-					instr.stringRepresentation = varType + " " + varName + " = " + expressionContent;
-					instr.returnType = varType.makePointerToThis(); // Pointer of type 'varType'
-					instr.setArgs(lastInstruction);
-					instr.variableThatWasChanged = var;
-					instr.parentInstruction = parentInstruction;
-					
-					var.instructionThatDeclared = instr;
-					
-					instructions.add(instr);
+					StoreInstr storeInstr = new StoreInstr(parentInstruction,
+							varName + " = " + expressionContent, declareInstr, lastInstruction);
+					instructions.add(storeInstr);
 				} else {
 					printError("Invalid assignment operator");
 				}
 			}
-		} else if (ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(line, ParseUtil.assignmentOperators) != null) { // If this is some form of reassignment
+			
+			// If this is some form of reassignment
+		} else if (ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(line, ParseUtil.assignmentOperators) != null) {
 			
 			// Find the position of the assignment operator on this line
 			StringStartEnd assignmentInfo = ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(line, ParseUtil.assignmentOperators);
@@ -708,12 +694,12 @@ public class Compiler {
 			
 			final String assignmentOp = assignmentInfo.string;
 			final String leftHandString = line.substring(0, assignmentInfo.startIndex).trim();
-			final String rightHandString = line.substring(assignmentInfo.endIndex);
+			final String rightHandString = line.substring(assignmentInfo.endIndex).trim();
 			
 			Instruction lastInstructionFromRightHand = null;
 			
 			// Only parse out the right-hand side if non-empty
-			if (!rightHandString.trim().isEmpty()) {
+			if (!rightHandString.isEmpty()) {
 			
 				// Parse out the value to assign to the variable
 				lastInstructionFromRightHand = parseExpression(parentInstruction, rightHandString);
@@ -723,23 +709,25 @@ public class Compiler {
 			Instruction lastInstructionFromLeftHand = parseExpression(parentInstruction, leftHandString);
 			
 			// We expect the last instruction from the left-hand-side to read some variable
-			if (lastInstructionFromLeftHand.variableThatWasRead == null) {
+			if (!lastInstructionFromLeftHand.returnType.isBaseType) {
 				printError("Left-hand side is not a variable or reference");
 			}
 			
 			// We expect the last instruction from the left-hand-side to be a "Read" operation
-			if (lastInstructionFromLeftHand.instructionType != InstructionType.Read) {
-				printError("Left-hand-side should end in a 'Read' instruction " +
-							"(not a " + lastInstructionFromLeftHand.instructionType + ")");
+			if (!(lastInstructionFromLeftHand instanceof LoadInstr)) {
+				printError("Left-hand-side should end in a 'Load' instruction " +
+							"(not a " + lastInstructionFromLeftHand.name() + ")");
 			}
 			
-			final Type leftHandType = lastInstructionFromLeftHand.returnType;
+			LoadInstr loadInstr = (LoadInstr)lastInstructionFromLeftHand;
+			
+			final Type leftHandType = loadInstr.returnType;
 			
 			// The last instruction was a Read, so get the variable that was read
-			final Variable varToBeModified = lastInstructionFromLeftHand.variableThatWasRead;
+			final DeclareInstr instrThatDeclaredVar = loadInstr.declareInstr;
 			
-			if (varToBeModified == null) {
-				printError("Read instruction missing variable!");
+			if (instrThatDeclaredVar == null) {
+				printError("Read instruction missing variable reference!");
 			}
 			
 			// If this is an assignment (by value)
@@ -754,95 +742,44 @@ public class Compiler {
 				
 				// Since we are assigning over the old value without reading it, we can simply
 				// delete the previous Read instruction that was created.
-				if (instructions.get(instructions.size() - 1).instructionType != InstructionType.Read) {
-					printError("Last generated instruction is expected to be a 'Read'");
+				if (!(instructions.get(instructions.size() - 1) instanceof LoadInstr)) {
+					printError("Last generated instruction is expected to be a 'Load'");
 				}
 				instructions.remove(instructions.size() - 1);
 				
-				// If we are modifying a base type, such as an int or bool
-				if (varToBeModified.type.isBaseType) {
+				// Write to the pointer
+				StoreInstr assignment = new StoreInstr(parentInstruction, line, instrThatDeclaredVar, lastInstructionFromRightHand);
+				instructions.add(assignment);
 					
-					Instruction assignment = new Instruction(InstructionType.Reassign);
-					assignment.stringRepresentation = line;
-					assignment.variableThatWasChanged = varToBeModified;
-					assignment.setArgs(lastInstructionFromRightHand);
-					assignment.parentInstruction = parentInstruction;
-					instructions.add(assignment);
-					
-				} else if (varToBeModified.type.isArray) { // Write to a value of an array
-					
-					Instruction assignment = new Instruction(InstructionType.Reassign);
-					assignment.stringRepresentation = line;
-					assignment.variableThatWasChanged = varToBeModified;
-					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
-					args[0] = lastInstructionFromRightHand;
-					for (int i = 1; i < args.length; i++) {
-						args[i] = lastInstructionFromLeftHand.args[i - 1];
-					}
-					assignment.setArgs(args);
-					assignment.parentInstruction = parentInstruction;
-					instructions.add(assignment);
-					
-				} else {
-					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
-				}
-				
 			} else if (assignmentOp.equals("++") || assignmentOp.equals("--")) { // Increment/Decrement
 				
 				if (!leftHandType.isNumberType()) {
 					printError(assignmentOp + " can only be applied to a numeric type");
 				}
 				
-				if (!rightHandString.trim().isEmpty()) {
+				if (!rightHandString.isEmpty()) {
 					printError(assignmentOp + " cannot be followed by an expression");
 				}
 				
-				InstructionType incrementType = getInstructionTypeFromOperator(assignmentOp);
-				
-				Instruction one = new Instruction(InstructionType.Given);
-				one.stringRepresentation = "1";
-				one.primitiveGivenValue = 1;
-				one.returnType = Type.Int;
-				one.parentInstruction = parentInstruction;
+				GivenInstr one = new GivenInstr(parentInstruction, "1", 1, Type.Int);
 				instructions.add(one);
 				
-				Instruction addOrSubtract = new Instruction(incrementType);
-				addOrSubtract.stringRepresentation = leftHandString + " " + incrementType.toSymbolForm() + " 1";
-				addOrSubtract.setArgs(lastInstructionFromLeftHand, one);
-				addOrSubtract.returnType = getReturnTypeFromInstructionAndOperands(
-							incrementType, leftHandType, one.returnType);
-				addOrSubtract.parentInstruction = parentInstruction;
-				instructions.add(addOrSubtract);
-				
-				// If we are modifying a base type, such as an int or bool
-				if (varToBeModified.type.isBaseType) {
-					
-					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
-					writeToFirstHalf.stringRepresentation = leftHandString.trim() + " = " +
-										addOrSubtract.stringRepresentation;
-					writeToFirstHalf.variableThatWasChanged = varToBeModified;
-					writeToFirstHalf.setArgs(addOrSubtract);
-					writeToFirstHalf.parentInstruction = parentInstruction;
-					instructions.add(writeToFirstHalf);
-					
-				} else if (varToBeModified.type.isArray) { // Write to a value of an array
-					
-					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
-					writeToFirstHalf.stringRepresentation = leftHandString.trim() + " = " +
-										addOrSubtract.stringRepresentation;
-					writeToFirstHalf.variableThatWasChanged = varToBeModified;
-					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
-					args[0] = addOrSubtract;
-					for (int i = 1; i < args.length; i++) {
-						args[i] = lastInstructionFromLeftHand.args[i - 1];
-					}
-					writeToFirstHalf.setArgs(args);
-					writeToFirstHalf.parentInstruction = parentInstruction;
-					instructions.add(writeToFirstHalf);
-					
+				Instruction addOrSubtract;
+				if (assignmentOp.equals("++")) {
+					addOrSubtract = new AddInstr(parentInstruction, leftHandString + " + 1", loadInstr, one);
+					instructions.add(addOrSubtract);
+				} else if (assignmentOp.equals("--")) {
+					addOrSubtract = new SubInstr(parentInstruction, leftHandString + " + 1", loadInstr, one);
+					instructions.add(addOrSubtract);
 				} else {
-					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
+					new Exception("Invalid operator: " + assignmentOp).printStackTrace();
+					return null;
 				}
+				
+				// Write to the pointer
+				StoreInstr writeToFirstHalf = new StoreInstr(parentInstruction,
+						leftHandString + " = " + addOrSubtract.debugString, instrThatDeclaredVar, addOrSubtract);
+				instructions.add(writeToFirstHalf);
 				
 			} else if (assignmentOp.equals("+=")  || assignmentOp.equals("-=") || // If this is a shorthand operator
 					   assignmentOp.equals("/=")  || assignmentOp.equals("*=") ||
@@ -850,49 +787,40 @@ public class Compiler {
 					   assignmentOp.equals("||=") || assignmentOp.equals("&&=") ||
 					   assignmentOp.equals("|=")  || assignmentOp.equals("&=")) {
 				
-				if (rightHandString.trim().isEmpty()) {
+				if (rightHandString.isEmpty()) {
 					printError("Operator " + assignmentOp + " must be followed by an expression");
 				}
 				
-				final Type rightHandType = lastInstructionFromRightHand.returnType;
-				
-				InstructionType incrementType = getInstructionTypeFromOperator(assignmentOp);
-				
-				Instruction binaryOp = new Instruction(incrementType);
-				binaryOp.stringRepresentation = leftHandString + " " + incrementType.toSymbolForm() + rightHandString;
-				binaryOp.setArgs(lastInstructionFromLeftHand, lastInstructionFromRightHand);
-				binaryOp.returnType = getReturnTypeFromInstructionAndOperands(
-									incrementType, leftHandType, rightHandType);
-				binaryOp.parentInstruction = parentInstruction;
+				Instruction binaryOp;
+				if (assignmentOp.equals("+=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " + " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("-=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " - " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("/=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " / " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("*=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " * " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("^=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " ^ " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("%=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " % " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("||=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " || " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("&&=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " && " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("|=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " | " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else if (assignmentOp.equals("&=")) {
+					binaryOp = new AddInstr(parentInstruction, leftHandString + " & " + rightHandString, loadInstr, lastInstructionFromRightHand);
+				} else {
+					printError("Invalid operator: " + assignmentOp);
+					return null;
+				}
 				instructions.add(binaryOp);
 				
-				// If we are modifying a base type, such as an int or bool
-				if (varToBeModified.type.isBaseType) {
-					
-					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
-					writeToFirstHalf.stringRepresentation = leftHandString.trim();
-					writeToFirstHalf.variableThatWasChanged = varToBeModified;
-					writeToFirstHalf.setArgs(binaryOp);
-					writeToFirstHalf.parentInstruction = parentInstruction;
-					instructions.add(writeToFirstHalf);
-					
-				} else if (varToBeModified.type.isArray) { // Write to a value of an array
-					
-					Instruction writeToFirstHalf = new Instruction(InstructionType.Reassign);
-					writeToFirstHalf.stringRepresentation = leftHandString.trim();
-					writeToFirstHalf.variableThatWasChanged = varToBeModified;
-					Instruction[] args = new Instruction[lastInstructionFromLeftHand.args.length + 1];
-					args[0] = binaryOp;
-					for (int i = 1; i < args.length; i++) {
-						args[i] = lastInstructionFromLeftHand.args[i - 1];
-					}
-					writeToFirstHalf.setArgs(args);
-					writeToFirstHalf.parentInstruction = parentInstruction;
-					instructions.add(writeToFirstHalf);
-					
-				} else {
-					printError("Cannot modify variable '" + varToBeModified.name + "' of type " + leftHandType + ".");
-				}
+				// Write to the pointer
+				StoreInstr writeToFirstHalf = new StoreInstr(parentInstruction, leftHandString, instrThatDeclaredVar, binaryOp);
+				instructions.add(writeToFirstHalf);
 				
 			} else {
 				printError("Invalid assignment operator");
@@ -936,7 +864,7 @@ public class Compiler {
 		StringStartEnd operatorInfo = ParseUtil.findLowestPrecedenceOperatorAtLowestLevel(text, ParseUtil.binaryOperators);
 		if (operatorInfo != null) {
 			
-			String op = operatorInfo.string;
+			String binaryOpStr = operatorInfo.string;
 			int start = operatorInfo.startIndex;
 			int end = operatorInfo.endIndex;
 			
@@ -958,103 +886,110 @@ public class Compiler {
 				printError("Expression returns nothing: '" + lastHalf + "'");
 			}
 			
-			// Create the instruction for this binary operator
-			InstructionType type = getInstructionTypeFromOperator(op);
-			
-			// Handle overloaded binary operators depending on operand type
-			if (type == InstructionType.Add) {
-				// This must be a string concatenation
-				if (operandType1.isA(BaseType.String) || operandType2.isA(BaseType.String)) {
-					type = InstructionType.Concat;
-				}
+			Instruction instr;
+			if (binaryOpStr.equals("=")) {
+				instr = new EqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("!=")) {
+				instr = new NotEqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("@=")) {
+				instr = new RefEqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("!@=")) {
+				instr = new RefNotEqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("<")) {
+				instr = new LessInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals(">")) {
+				instr = new GreaterInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("<=")) {
+				instr = new LessEqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals(">=")) {
+				instr = new GreaterEqualInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("&")) {
+				instr = new BitAndInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("|")) {
+				instr = new BitOrInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("&&")) {
+				instr = new BoolAndInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("||")) {
+				instr = new BoolOrInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("+")) {
+				instr = new AddInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("-")) {
+				instr = new SubInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("*")) {
+				instr = new MultInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("/")) {
+				instr = new DivideInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("%")) {
+				instr = new ModuloInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else if (binaryOpStr.equals("^")) {
+				instr = new PowerInstr(parentInstruction, firstHalf + " " + binaryOpStr + " " + lastHalf, lastInstruction1, lastInstruction2);
+			} else {
+				new Exception("Invalid binary operator: " + binaryOpStr).printStackTrace();
+				return null;
 			}
-			
-			Type returnType = getReturnTypeFromInstructionAndOperands(type, operandType1, operandType2);
-
-			Instruction instr = new Instruction(type);
-			instr.stringRepresentation = firstHalf + " " + op + " " + lastHalf;
-			instr.setArgs(lastInstruction1, lastInstruction2);
-			instr.returnType = returnType;
-			instr.parentInstruction = parentInstruction;
-			
-			// Add all of the new instruction
 			instructions.add(instr);
 			
 		} else { // There are no more binary operators in this expression
 			
 			final char opChar = text.charAt(0);
 			
-			// If it's an BitNot, Not, or ArrayLength, then add a unary instruction
+			// If it's an BitNot, BoolNot, or ArrLength, then add a unary instruction
 			if (opChar == '!' || opChar == '~' || opChar == '#') {
-				InstructionType instructionType = getInstructionTypeFromOperator(String.valueOf(opChar));
-				
-				String content = ParseUtil.getUnaryFunctionArgument(text, 0);
 
 				// Recursively parse the expressions
+				String content = ParseUtil.getUnaryFunctionArgument(text, 0);
 				Instruction lastInstruction = parseExpression(parentInstruction, content);
 				
-				Instruction unaryInstr = new Instruction(instructionType);
-				unaryInstr.stringRepresentation = content;
-				unaryInstr.setArgs(lastInstruction);
-				unaryInstr.returnType = getReturnTypeFromInstructionAndOperands(instructionType, lastInstruction.returnType, null);
-				unaryInstr.parentInstruction = parentInstruction;
-				instructions.add(unaryInstr);
-				
+				Instruction instr;
+				if (opChar == '!') {
+					instr = new BoolNotInstr(parentInstruction, opChar + content, lastInstruction);
+				} else if (opChar == '~') {
+					instr = new BitNotInstr(parentInstruction, opChar + content, lastInstruction);
+				} else if (opChar == '#') {
+					
+					if (!(lastInstruction instanceof GetPointerInstr)) {
+						printError("# expected a reference to an array, but got " + lastInstruction.returnType);
+					}
+					
+					// We have to get the pointer to an array before we can get the length of it
+					GetPointerInstr pointerInstr = (GetPointerInstr)lastInstruction;
+					
+					boolean countAllElements = true;
+					instr = new ArrLengthInstr(parentInstruction, opChar + content, pointerInstr, 0, countAllElements);
+				} else {
+					new Exception("Invalid binary operator: " + opChar).printStackTrace();
+					return null;
+				}
+				instructions.add(instr);
 			} else {
 				
-				// If this is a signed integer
+				// If this is a literal
 				if (ParseUtil.isSignedInteger(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = ParseUtil.parseInt(text);
-					instr.returnType = Type.Int;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseInt(text), Type.Int);
 					instructions.add(instr);
 				} else if (ParseUtil.isSignedLong(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = ParseUtil.parseLong(text);
-					instr.returnType = Type.Long;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseLong(text), Type.Long);
 					instructions.add(instr);
 				} else if (ParseUtil.isDouble(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = ParseUtil.parseDouble(text);
-					instr.returnType = Type.Double;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseDouble(text), Type.Double);
 					instructions.add(instr);
 				} else if (ParseUtil.isFloat(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = ParseUtil.parseFloat(text);
-					instr.returnType = Type.Float;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseFloat(text), Type.Float);
 					instructions.add(instr);
 				} else if (ParseUtil.isBool(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = ParseUtil.parseBool(text);
-					instr.returnType = Type.Bool;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseBool(text), Type.Bool);
 					instructions.add(instr);
 				} else if (ParseUtil.isString(text)) {
-					Instruction instr = new Instruction(InstructionType.Given);
-					instr.stringRepresentation = text;
-					instr.primitiveGivenValue = text;
-					instr.returnType = Type.String;
-					instr.parentInstruction = parentInstruction;
+					GivenInstr instr = new GivenInstr(parentInstruction, text, text, Type.String);
 					instructions.add(instr);
 				} else if (ParseUtil.isArrayDefinition(text)) {
+					
 					Object[] arrayData = ParseUtil.getArrayDefinitionInfo(text);
 					if (arrayData == null) {
 						printError("Malformed array definition in '" + text + "'");
 					}
-					Type arrayType = (Type)arrayData[0];
+					Type arrayElementType = (Type)arrayData[0];
 					String[] dimensions = (String[])arrayData[1];
-					
-					Instruction instr = new Instruction(InstructionType.Alloc);
-					instr.stringRepresentation = text;
 					
 					// Parse each of the arguments to the array dimension
 					Instruction[] args = new Instruction[dimensions.length];
@@ -1069,13 +1004,12 @@ public class Compiler {
 						
 						args[i] = lastInstruction;
 					}
-					instr.setArgs(args);
 					
-					instr.returnType = arrayType;
-					instr.parentInstruction = parentInstruction;
+					AllocArrInstr instr = new AllocArrInstr(parentInstruction, text, arrayElementType, args);
 					instructions.add(instr);
 					
-				} else if (ParseUtil.isArrayReference(text)) {
+				} else if (ParseUtil.isArrayElementAccess(text)) {
+					
 					Object[] arrayData = ParseUtil.getArrayReadInfo(text);
 					if (arrayData == null) {
 						printError("Malformed array in '" + text + "'");
@@ -1083,31 +1017,28 @@ public class Compiler {
 					String arrName = (String)arrayData[0];
 					String[] dimensions = (String[])arrayData[1];
 					
-					Variable var = findVariableByName(parentInstruction, arrName);
-					if (var == null) {
+					DeclareInstr instrThatDeclaredVar = findInstructionThatDeclaredVariable(parentInstruction, arrName);
+					if (instrThatDeclaredVar == null) {
 						printError("Unknown array '" + arrName + "'");
 					}
 					
+					final String varName = instrThatDeclaredVar.varName;
+					final Type varType = instrThatDeclaredVar.varType;
+					
 					// Make sure the number of dimensions accessed matches the dimension of the array
-					if (var.type.dimensions != dimensions.length) {
+					if (varType.dimensions != dimensions.length) {
 						String plural = " index.";
 						if (dimensions.length != 1) {
 							plural = " indices.";
 						}
-						printError("'" + var.name + "' is " + var.type.dimensions + "-dimensional, but was accessed with " +
+						printError("'" + varName + "' is " + varType.dimensions + "-dimensional, but was accessed with " +
 									dimensions.length + plural);
 					}
 					
-					Instruction instr = new Instruction(InstructionType.Read);
-					instr.stringRepresentation = text;
-					instr.variableThatWasRead = var;
-					instr.returnType = new Type(var.type.baseType);
-					instr.parentInstruction = parentInstruction;
-					
 					// Find the all previous instructions that assigned this variable, and reference them
-					boolean foundLastWriteInstruction = wasAssignmentGuaranteed(instr, var);
+					boolean foundLastWriteInstruction = wasAssignmentGuaranteed(parentInstruction, varName);
 					if (!foundLastWriteInstruction) {
-						printError("Array '" + var + "' was never initialized");
+						printError("Array '" + varName + "' was never initialized");
 					}
 					
 					// Parse each of the arguments to the array index
@@ -1124,8 +1055,7 @@ public class Compiler {
 						args[i] = lastInstruction;
 					}
 					
-					instr.setArgs(args);
-					
+					GetElementInstr instr = new GetElementInstr(parentInstruction, text, instrThatDeclaredVar, args);
 					instructions.add(instr);
 				
 				} else if (text.indexOf('(') != -1 && text.indexOf(')') != -1) { // Function call
@@ -1135,32 +1065,29 @@ public class Compiler {
 				} else { // This must be a variable, or garbage
 				
 					// Check if this is a recognized variable
-					Variable var = findVariableByName(parentInstruction, text);
-					if (var == null) {
+					DeclareInstr instrThatDeclaredVar = findInstructionThatDeclaredVariable(parentInstruction, text);
+					if (instrThatDeclaredVar == null) {
 						printError("Undeclared variable '" + text + "'");
 					}
 					
-					Instruction instr;
-					
-					// If it is an array
-					if (var.type.isArray) {
-						instr = new Instruction(InstructionType.ReadBuiltInProperty);
-					} else { // If this is a primitive type
-						instr = new Instruction(InstructionType.Read);
-					}
-					
-					instr.stringRepresentation = text;
-					instr.variableThatWasRead = var;
-					instr.returnType = var.type;
-					instr.parentInstruction = parentInstruction;
+					final String varName = instrThatDeclaredVar.varName;
+					final Type varType = instrThatDeclaredVar.varType;
 					
 					// Find the all previous instructions that assigned this variable, and reference them
-					boolean foundLastWriteInstruction = wasAssignmentGuaranteed(instr, var);
-					if (!foundLastWriteInstruction) {
-						printError("Variable '" + var + "' was never initialized");
+					boolean wasInitialized = wasAssignmentGuaranteed(parentInstruction, varName);
+					if (!wasInitialized) {
+						printError("Variable '" + varName + "' was never initialized");
 					}
 					
-					instructions.add(instr);
+					// If it is an array
+					if (varType.isArray) {
+						GetPointerInstr instr = new GetPointerInstr(parentInstruction, text, instrThatDeclaredVar);
+						instructions.add(instr);
+						
+					} else { // If this is a primitive type
+						LoadInstr instr = new LoadInstr(parentInstruction, text, instrThatDeclaredVar);
+						instructions.add(instr);
+					}
 				}
 			}
 		}
@@ -1203,10 +1130,11 @@ public class Compiler {
 			
 			Instruction lastInstruction = parseExpression(parentInstruction, argStrings[0]);
 			
-			Instruction instr = new Instruction(InstructionType.Print);
-			instr.stringRepresentation = argStrings[0];
-			instr.setArgs(lastInstruction);
-			instr.parentInstruction = parentInstruction;
+			// First convert the argument to a string
+			ToStringInstr toStringInstr = new ToStringInstr(parentInstruction, argStrings[0], lastInstruction);
+			instructions.add(toStringInstr);
+			
+			PrintInstr instr = new PrintInstr(parentInstruction, argStrings[0], toStringInstr);
 			instructions.add(instr);
 			
 		} else { // Some user-defined function
@@ -1221,7 +1149,7 @@ public class Compiler {
 					printError("Function argument must return a value");
 				}
 				
-				if (lastInstruction.returnType.baseType == BaseType.Void) {
+				if (lastInstruction.returnType == null) {
 					printError("Cannot pass void into function");
 				}
 			}
@@ -1229,30 +1157,25 @@ public class Compiler {
 			Function func = findFunctionByNameAndArgs(functionName, args);
 			
 			// Create the function Call instruction
-			Instruction callInstr = new Instruction(InstructionType.Call);
-			callInstr.stringRepresentation = text;
-			callInstr.functionThatWasCalled = func;
-			callInstr.returnType = func.returnTypes[0]; // TODO add multiple returns
-			callInstr.setArgs(args);
-			callInstr.parentInstruction = parentInstruction;
+			FunctionCallInstr callInstr = new FunctionCallInstr(parentInstruction, text, func);
 			instructions.add(callInstr);
 		}
 	}
 	
 	// Return the return data type for the given instruction type and operands
-	static Type getReturnTypeFromInstructionAndOperands(InstructionType instrType, Type op1, Type op2) {
+	public static Type getReturnTypeFromInstructionAndOperands(Instruction instr, Type op1, Type op2) {
 		
-		if (instrType == InstructionType.Add ||
-				instrType == InstructionType.Subtract ||
-				instrType == InstructionType.Mult ||
-				instrType == InstructionType.Divide ||
-				instrType == InstructionType.Power) {
+		if (instr instanceof AddInstr ||
+			instr instanceof SubInstr ||
+			instr instanceof MultInstr ||
+			instr instanceof DivideInstr ||
+			instr instanceof PowerInstr) {
 			
 			if (op1.isArray || op1.isPointer()) {
-				printError("Cannot perform " + instrType.name() + " on " + op1);
+				printError("Cannot perform " + instr.name() + " on " + op1);
 			}
 			if (op2.isArray || op2.isPointer()) {
-				printError("Cannot perform " + instrType.name() + " on " + op2);
+				printError("Cannot perform " + instr.name() + " on " + op2);
 			}
 			
 			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
@@ -1289,32 +1212,32 @@ public class Compiler {
 				return Type.Double;
 			}
 			
-			if (instrType == InstructionType.Add) {
+			if (instr instanceof AddInstr) {
 				printError("Addition cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Subtract) {
+			} else if (instr instanceof SubInstr) {
 				printError("Subtraction cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Mult) {
+			} else if (instr instanceof MultInstr) {
 				printError("Multiplication cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Divide) {
+			} else if (instr instanceof DivideInstr) {
 				printError("Division cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Power) {
+			} else if (instr instanceof PowerInstr) {
 				printError("Exponentiation cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
 			
-		} else if (instrType == InstructionType.Modulo) {
+		} else if (instr instanceof ModuloInstr) {
 			
 			if (op1.isArray || op1.isPointer()) {
-				printError("Cannot perform " + instrType.name() + " on " + op1);
+				printError("Cannot perform " + instr.name() + " on " + op1);
 			}
 			if (op2.isArray || op2.isPointer()) {
-				printError("Cannot perform " + instrType.name() + " on " + op2);
+				printError("Cannot perform " + instr.name() + " on " + op2);
 			}
 			
 			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
@@ -1343,29 +1266,29 @@ public class Compiler {
 				printError("Modulus cannot be performed on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (instrType == InstructionType.And ||
-				instrType == InstructionType.Or ||
-				instrType == InstructionType.Not) {
+		} else if (instr instanceof BoolAndInstr ||
+				   instr instanceof BoolOrInstr ||
+				   instr instanceof BoolNotInstr) {
 			
 			if (op1.baseType == BaseType.Bool && op2.baseType == BaseType.Bool) {
 				return Type.Bool;
 			}
 			
-			if (instrType == InstructionType.And) {
+			if (instr instanceof BoolAndInstr) {
 				printError("AND cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Or) {
+			} else if (instr instanceof BoolOrInstr) {
 				printError("OR cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Not) {
+			} else if (instr instanceof BoolNotInstr) {
 				printError("NOT cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (instrType == InstructionType.BitAnd ||
-				instrType == InstructionType.BitOr ||
-				instrType == InstructionType.BitNot) {
+		} else if (instr instanceof BitAndInstr ||
+				   instr instanceof BitOrInstr ||
+				   instr instanceof BitNotInstr) {
 			
 			if (op1.baseType == BaseType.Int && op2.baseType == BaseType.Int) {
 				return Type.Int;
@@ -1373,19 +1296,19 @@ public class Compiler {
 				return Type.Long;
 			}
 			
-			if (instrType == InstructionType.BitAnd) {
+			if (instr instanceof BitAndInstr) {
 				printError("Bitwise AND cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.BitOr) {
+			} else if (instr instanceof BitOrInstr) {
 				printError("Bitwise OR cannot be performed on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.BitNot) {
+			} else if (instr instanceof BitNotInstr) {
 				printError("Bitwise NOT cannot be performed on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (instrType == InstructionType.Concat) {
+		} else if (instr instanceof ConcatInstr) {
 			if (op1.baseType == BaseType.String && op2.baseType == BaseType.Double) {
 				return Type.String;
 			} else if (op1.baseType == BaseType.Double && op2.baseType == BaseType.String) {
@@ -1412,7 +1335,9 @@ public class Compiler {
 				printError("Concatenation cannot be performed on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (instrType == InstructionType.Equal || instrType == InstructionType.NotEqual) {
+		} else if (instr instanceof EqualInstr ||
+				   instr instanceof NotEqualInstr) {
+			
 			if (op1.isNumberType() && op2.isNumberType()) {
 				return Type.Bool;
 			} else if (op1.baseType == BaseType.String && op2.baseType == BaseType.String) {
@@ -1423,39 +1348,41 @@ public class Compiler {
 				printError("Equality cannot be tested on " + op1 + " and " + op2);
 				return null;
 			}
-		} else if (instrType == InstructionType.RefEqual || instrType == InstructionType.RefNotEqual) {
-			if (op1.baseType == BaseType.Void || op2.baseType == BaseType.Void) {
-				printError("Reference equality cannot be tested on " + op1 + " and " + op2);
-				return null;
-			} else {
-				return Type.Bool;
-			}
-		} else if (instrType == InstructionType.Less || instrType == InstructionType.Greater ||
-					instrType == InstructionType.LessEqual || instrType == InstructionType.GreaterEqual) {
+		} else if (instr instanceof RefEqualInstr ||
+				   instr instanceof RefNotEqualInstr) {
+			
+			printError("Reference equality not implemented yet");
+			return Type.Bool;
+			
+		} else if (instr instanceof LessInstr ||
+				   instr instanceof GreaterInstr ||
+				   instr instanceof LessEqualInstr ||
+				   instr instanceof GreaterEqualInstr) {
+			
 			if (op1.isNumberType() && op2.isNumberType()) {
 				return Type.Bool;
 			}
 			
-			if (instrType == InstructionType.Less) {
+			if (instr instanceof LessInstr) {
 				printError("Less Than cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.Greater) {
+			} else if (instr instanceof GreaterInstr) {
 				printError("Greater Than cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.LessEqual) {
+			} else if (instr instanceof LessEqualInstr) {
 				printError("Less or Equal To cannot be tested on " + op1 + " and " + op2);
 				return null;
-			} else if (instrType == InstructionType.GreaterEqual) {
+			} else if (instr instanceof GreaterEqualInstr) {
 				printError("Greater or Equal To cannot be tested on " + op1 + " and " + op2);
 				return null;
 			} else {
 				new Exception("This code should not be reached").printStackTrace();
 			}
-		} else if (instrType == InstructionType.Print) {
-			return Type.Void;
-		} else if (instrType == InstructionType.ArrayLength) {
+		} else if (instr instanceof PrintInstr) {
+			return null;
+		} else if (instr instanceof ArrLengthInstr) {
 			if (op2 != null) {
-				new Exception(InstructionType.ArrayLength + " second arg must be null");
+				new Exception("ArrayLengthInstr second arg must be null");
 			}
 			if (op1.isArray) {
 				return Type.Int;
@@ -1463,60 +1390,62 @@ public class Compiler {
 				printError("ArrayLength cannot be determined for type " + op1);
 			}
 		} else {
-			printError("Invalid return type: " + instrType);
+			printError("Invalid return type: " + instr.name());
 		}
 		
 		new Exception("This code should not be reached").printStackTrace();
 		return null;
 	}
 	
+	/*
 	// Return the instruction type corresponding to the given binary operator
-	static InstructionType getInstructionTypeFromOperator(String op) {
+	static class getInstructionTypeFromOperator(String op) {
 		if (op.equals("+") || op.equals("+=") || op.equals("++")) {
-			return InstructionType.Add;
+			return Add;
 		} else if (op.equals("-") || op.equals("-=") || op.equals("--")) {
-			return InstructionType.Subtract;
+			return Subtract;
 		} else if (op.equals("/") || op.equals("/=")) {
-			return InstructionType.Divide;
+			return Divide;
 		} else if (op.equals("*") || op.equals("*=")) {
-			return InstructionType.Mult;
+			return Mult;
 		} else if (op.equals("^") || op.equals("^=")) {
-			return InstructionType.Power;
+			return Power;
 		} else if (op.equals("%") || op.equals("%=")) {
-			return InstructionType.Modulo;
+			return Modulo;
 		} else if (op.equals("=")) {
-			return InstructionType.Equal;
+			return Equal;
 		} else if (op.equals("!=")) {
-			return InstructionType.NotEqual;
+			return NotEqual;
 		} else if (op.equals("<")) {
-			return InstructionType.Less;
+			return Less;
 		} else if (op.equals("@=")) {
-			return InstructionType.RefEqual;
+			return RefEqual;
 		} else if (op.equals("!@=")) {
-			return InstructionType.RefNotEqual;
+			return RefNotEqual;
 		} else if (op.equals(">")) {
-			return InstructionType.Greater;
+			return Greater;
 		} else if (op.equals("<=")) {
-			return InstructionType.LessEqual;
+			return LessEqual;
 		} else if (op.equals(">=")) {
-			return InstructionType.GreaterEqual;
+			return GreaterEqual;
 		} else if (op.equals("&&") || op.equals("&&=")) {
-			return InstructionType.And;
+			return And;
 		} else if (op.equals("||") || op.equals("||=")) {
-			return InstructionType.Or;
+			return Or;
 		} else if (op.equals("&") || op.equals("&=")) {
-			return InstructionType.BitAnd;
+			return BitAnd;
 		} else if (op.equals("|") || op.equals("|=")) {
-			return InstructionType.BitOr;
+			return BitOr;
 		} else if (op.equals("~")) {
-			return InstructionType.BitNot;
+			return BitNot;
 		} else if (op.equals("#")) {
-			return InstructionType.ArrayLength;
+			return ArrayLength;
 		} else {
 			printError("Invalid operator: " + op);
 			return null;
 		}
 	}
+	*/
 	
 	// Return true if the given function was previously declared in the given scope
 	static boolean findConflictingFunction(Instruction parentInstr, Function function) {
@@ -1524,12 +1453,12 @@ public class Compiler {
 		// Iterate backward to find a function
 		for (int i = instructions.size()-1; i >= 0; i--) {
 			Instruction otherInstruction = instructions.get(i);
-			InstructionType type = otherInstruction.instructionType;
 			
-			if (type == InstructionType.FunctionDefinition) { // If this is a routine
+			if (otherInstruction instanceof FunctionDefInstr) { // If this is a routine
+				FunctionDefInstr funcDefInstr = (FunctionDefInstr)otherInstruction;
 				
 				// If this instruction defined a routine by the same name
-				if (otherInstruction.functionThatWasDefined.name.equals(function.name)) {
+				if (funcDefInstr.functionThatWasDefined.name.equals(function.name)) {
 					
 					Instruction otherParent = otherInstruction.parentInstruction; // May be null
 					
@@ -1559,7 +1488,7 @@ public class Compiler {
 					// If there might be a conflict
 					if (isInConflictingScope) {
 						// If they are indistinguishable
-						if (!otherInstruction.functionThatWasDefined.isDistinguisable(function)) {
+						if (!funcDefInstr.functionThatWasDefined.isDistinguisable(function)) {
 							return true;
 						}
 					}
@@ -1655,38 +1584,32 @@ public class Compiler {
 		return null;
 	}
 	
-	// Return the variable by the given name if it was previously used in the given scope
-	static Variable findVariableByName(Instruction parentInstr, String varName) {
+	// Return the instruction that declared a variable by the given name
+	// if it was previously used in the given scope.
+	static DeclareInstr findInstructionThatDeclaredVariable(Instruction parentInstr, String varName) {
 		
 		// Iterate backward to find the assignment of this variable
-		for (int i = instructions.size()-1; i >= 0; i--) {
-			Instruction otherInstruction = instructions.get(i);
+		for (int i = instructions.size() - 1; i >= 0; i--) {
+			Instruction instr = instructions.get(i);
 			
-			// If this is the header of a function...
-			// then we can stop searching because we hit the top of the function the given instruction is inside.
-			if (otherInstruction.instructionType == InstructionType.FunctionDefinition) {
-				return null;
-			}
-			
-			Variable var = otherInstruction.variableThatWasChanged;
-			if (var == null) {
-				var = otherInstruction.variableThatWasRead;
-			}
-			
-			// If this instruction used the given variable
-			if (var != null && var.name.equals(varName)) {
+			if (instr instanceof DeclareInstr) {
+				DeclareInstr declareInstr = (DeclareInstr)instr;
 				
-				Instruction otherParent = otherInstruction.parentInstruction; // May be null
-				
-				// If this instruction is a child of an instruction that is a ancestor of the
-				//    given instruction, then it must be true that that instruction executed if the
-				//    given instruction executed, so we can stop searching.
-				Instruction nextParent = parentInstr;
-				while (nextParent != otherParent && nextParent != null) {
-					nextParent = nextParent.parentInstruction;
-				}
-				if (nextParent == otherParent) {
-					return var;
+				// If this instruction used the given variable
+				if (declareInstr.varName.equals(varName)) {
+					
+					Instruction otherParent = declareInstr.parentInstruction; // May be null
+					
+					// If this instruction is a child of an instruction that is a ancestor of the
+					//    given instruction, then it must be true that that instruction executed if the
+					//    given instruction executed, so we can stop searching.
+					Instruction nextParent = parentInstr;
+					while (nextParent != otherParent && nextParent != null) {
+						nextParent = nextParent.parentInstruction;
+					}
+					if (nextParent == otherParent) {
+						return declareInstr;
+					}
 				}
 			}
 		}
@@ -1696,26 +1619,28 @@ public class Compiler {
 	// Add references to all instructions that may have assigned to the given variable
 	//    until we find an instruction that is guaranteed to have assigned the given variable.
 	// Return true if a guaranteed assignment was found.
-	static boolean wasAssignmentGuaranteed(Instruction instr, Variable var) {
+	static boolean wasAssignmentGuaranteed(Instruction parentInstruction, String varName) {
 		
 		// Iterate backward to find the assignment of this variable
 		for (int i = instructions.size()-1; i >= 0; i--) {
-			Instruction otherInstruction = instructions.get(i);
-			InstructionType type = otherInstruction.instructionType;
+			Instruction otherInstr = instructions.get(i);
 			
-			if (type == InstructionType.Initialize || type == InstructionType.Reassign) {
+			if (otherInstr instanceof StoreInstr) {
+				StoreInstr storeInstr = (StoreInstr)otherInstr;
+				
+				String otherInstrVarName = storeInstr.declareInstr.varName;
 				
 				// If this instruction wrote to the given variable
-				if (otherInstruction.variableThatWasChanged == var) {
+				if (otherInstrVarName.equals(varName)) {
 					
 					// Determine if this instruction was guaranteed to be executed
 					
-					Instruction otherParent = otherInstruction.parentInstruction; // May be null
+					Instruction otherParent = storeInstr.parentInstruction; // May be null
 					
 					// If this instruction is a direct child of an instruction that is an ancestor of the
 					//    given instruction, then it must be true that that instruction executed if the
 					//    given instruction executed, so we can stop searching.
-					Instruction nextParent = instr.parentInstruction;
+					Instruction nextParent = parentInstruction;
 					while (nextParent != otherParent && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
 					}
@@ -1729,14 +1654,11 @@ public class Compiler {
 					//     and before the instruction of interest.
 					// Consider exhaustive if-elseif-else chains, do-while loops, and other structures
 					//       for guaranteed assignments.
-					if (wasAssignmentGuaranteedHelper(i, instructions.size(), var, instr.parentInstruction)) {
+					if (wasAssignmentGuaranteedHelper(i, instructions.size(), varName, parentInstruction)) {
 						return true;
 					}
-				} else if (otherInstruction.variableThatWasChanged == null) {
-					new Exception("Instruction variable changed must not be null").printStackTrace();
-					return false;
-				}
-			}// else if (type == InstructionType.RoutineDefinition) { // If this is a routine
+				} 
+			}// else if (type == RoutineDefinition) { // If this is a routine
 				// We can stop searching because we hit the header of the routine the given instruction is inside.
 			//	return false;
 			//}
@@ -1748,31 +1670,30 @@ public class Compiler {
 	// Return true if an assignment of the given variable was guaranteed between the given
 	//     start and stop instruction index within the enclosing scope of parentInstruction
 	static boolean wasAssignmentGuaranteedHelper(int startIndex, int stopIndex,
-				Variable var, Instruction parentInstruction) {
+				String varName, Instruction parentInstruction) {
 		
-		Instruction instr = null;
+		StoreInstr storeInstr = null;
 		int currentInstructionIndex = -1;
 		
 		// Iterate forward until we find an assignment instruction
 		for (int i = startIndex; i < stopIndex; i++) {
+			Instruction otherInstr = instructions.get(i);
 			
-			// If this is a reassignment of some sort
-			if (instructions.get(i).instructionType == InstructionType.Initialize ||
-					instructions.get(i).instructionType == InstructionType.Reassign) {
-				
-				instr = instructions.get(i);
+			// If this is an assignment
+			if (otherInstr instanceof StoreInstr) {
+				storeInstr = (StoreInstr)otherInstr;
 				currentInstructionIndex = i;
 				break;
 			}
 		}
 		
 		// No assignment was found, so return false
-		if (instr == null) {
+		if (storeInstr == null) {
 			return false;
 		}
 		
 		// Determine if an assignment is guaranteed in the parent instruction
-		Instruction currentParent = instr.parentInstruction;
+		Instruction currentParent = storeInstr.parentInstruction;
 		
 		// This assignment is in the same scope as the given parent,
 		//   so we are done searching.
@@ -1786,7 +1707,7 @@ public class Compiler {
 			
 			// If we are currently inside a loop, then check if the current instruction
 			//     is guaranteed to execute at least once.
-			if (currentParent.instructionType == InstructionType.Loop) {
+			if (currentParent instanceof LoopInstr) {
 				// Search for a break or continue statement that possibly breaks this loop
 				//   before getting to the current instruction
 				int i = currentInstructionIndex - 1;
@@ -1797,14 +1718,19 @@ public class Compiler {
 					if (currentInstr == currentParent) {
 						break;
 					}
+
+					LoopInstr loopStartInstr = null;
+					if (currentInstr instanceof BreakInstr) {
+						loopStartInstr = ((BreakInstr)currentInstr).loopStartInstr;
+					} else if (currentInstr instanceof ContinueInstr) {
+						loopStartInstr = ((ContinueInstr)currentInstr).loopStartInstr;
+					}
 					
-					if (currentInstr.instructionType == InstructionType.Break ||
-							currentInstr.instructionType == InstructionType.Continue) {
-						if (currentInstr.args[0] == currentParent) {
-							// A possible break was found before the current instruction.
-							// Therefore it may not have been executed.
-							return false;
-						}
+					if (loopStartInstr != null &&
+						loopStartInstr == currentParent) {
+						// A possible break was found before the current instruction.
+						// Therefore it may not have been executed.
+						return false;
 					}
 					
 					i--;
@@ -1813,19 +1739,25 @@ public class Compiler {
 			
 			// If we are inside a if-elseif-else structure, but not all the way at the
 			//    top of the chain, then stop searching here.
-			if (currentParent.instructionType == InstructionType.Else ||
-					currentParent.instructionType == InstructionType.ElseIf) {
+			if (currentParent instanceof ElseInstr ||
+				currentParent instanceof ElseIfInstr) {
+				
 				return false;
 			}
 			
 			// If we are inside an if-elseif-else structure, and this instruction is
 			//    inside the leading if-condition
-			if (currentParent.instructionType == InstructionType.If) {
-				// Check if this if-chain ends in an else (i.e. it may be exhaustive)
+			if (currentParent instanceof IfInstr) {
 				Instruction currentIf = currentParent;
+				
+				// Check if this if-chain ends in an else (i.e. it may be exhaustive)
 				do {
-					currentIf = currentIf.nextChainedInstruction;
-				} while (currentIf != null && currentIf.instructionType != InstructionType.Else);
+					if (currentIf instanceof IfInstr) {
+						currentIf = ((IfInstr)currentIf).nextChainedInstruction;
+					} else if (currentIf instanceof ElseIfInstr) {
+						currentIf = ((ElseIfInstr)currentIf).nextChainedInstruction;
+					}
+				} while (currentIf != null && !(currentIf instanceof ElseInstr));
 				
 				// If this chain did not end in an Else-block, then we are done searching
 				if (currentIf == null) {
@@ -1837,22 +1769,32 @@ public class Compiler {
 				currentIf = currentParent;
 				do {
 					// This must be an ElseIf or an Else block
-					currentIf = currentIf.nextChainedInstruction;
-					Instruction endInstruction = currentIf.endInstruction;
+					if (currentIf instanceof IfInstr) {
+						currentIf = ((IfInstr)currentIf).nextChainedInstruction;
+					} else if (currentIf instanceof ElseIfInstr) {
+						currentIf = ((ElseIfInstr)currentIf).nextChainedInstruction;
+					}
+					
+					Instruction endChainInstruction = null;
+					if (currentIf instanceof IfInstr) {
+						endChainInstruction = ((IfInstr)currentIf).endChainInstruction;
+					} else if (currentIf instanceof ElseIfInstr) {
+						endChainInstruction = ((ElseIfInstr)currentIf).endChainInstruction;
+					}
 					int startInstructionIndex = instructions.indexOf(currentIf) + 1;
-					int endInstructionIndex = instructions.indexOf(endInstruction);
+					int endChainInstructionIndex = instructions.indexOf(endChainInstruction);
 					
 					// Recursively check for guaranteed assignment.
 					// If any one was not guaranteed, then return false
 					if (!wasAssignmentGuaranteedHelper(startInstructionIndex,
-							endInstructionIndex, var, currentIf)) {
+							endChainInstructionIndex, varName, currentIf)) {
 						return false;
 					}
-				} while (currentIf.instructionType != InstructionType.Else);
+				} while (!(currentIf instanceof ElseInstr));
 			}
 			
 			// This is a routine, so we can't be guaranteed that it will execute
-			if (currentParent.instructionType == InstructionType.FunctionDefinition) {
+			if (currentParent instanceof FunctionDefInstr) {
 				return false;
 			}
 			
@@ -1872,7 +1814,7 @@ public class Compiler {
 		for (int i = instructionIndex; i >= 0; i--) {
 			
 			Instruction instr = instructions.get(i);
-			if (instr.instructionType.doesStartScope()) {
+			if (instr.doesStartScope()) {
 				currentScopeDepth--;
 			}
 			
@@ -1881,7 +1823,7 @@ public class Compiler {
 			}
 			
 			// It is possible for an instruction to both increase and decrease scope (such as ElseIf)
-			if (instr.instructionType.doesEndScope()) {
+			if (instr.doesEndScope()) {
 				currentScopeDepth++;
 			}
 		}
@@ -1890,18 +1832,18 @@ public class Compiler {
 	}
 	
 	// Return the closest ancestor instruction that is a Loop instruction, or null if none is found
-	static Instruction findNearestAncestorLoop(Instruction parent) {
-		while (parent != null && parent.instructionType != InstructionType.Loop) {
+	static LoopInstr findNearestAncestorLoop(Instruction parent) {
+		while (parent != null && parent instanceof LoopInstr) {
 			// Loops and conditional structures may not contain a routine
-			if (parent.instructionType == InstructionType.FunctionDefinition) {
+			if (parent instanceof FunctionDefInstr) {
 				break;
 			}
 			parent = parent.parentInstruction;
 		}
-		if (parent.instructionType != InstructionType.Loop) {
-			return null;
+		if (parent instanceof LoopInstr) {
+			return (LoopInstr)parent;
 		}
-		return parent;
+		return null;
 	}
 	
 	// Find every function declaration in the program, and add it to the list, 'functions'
@@ -1934,6 +1876,7 @@ public class Compiler {
 				
 				String[] argStrings = ParseUtil.separateArguments(argsString);
 				Type[] argTypes = new Type[argStrings.length];
+				String[] argNames = new String[argStrings.length];
 				for (int j = 0; j < argTypes.length; j++) {
 					int firstSpaceIndex = argStrings[j].indexOf(' ');
 					if (firstSpaceIndex == -1) {
@@ -1942,11 +1885,13 @@ public class Compiler {
 					
 					String typeString = argStrings[j].substring(0, firstSpaceIndex);
 					argTypes[j] = new Type(typeString);
+					
+					String argName = argStrings[j].substring(firstSpaceIndex + 1).trim();
+					argNames[j] = argName;
 				}
 				
-				Type[] returnTypes = {returnType}; // TODO add multiple returns
-				
-				Function function = new Function(functionName, returnTypes, argTypes);
+				// TODO add multiple returns
+				Function function = new Function(functionName, returnType, argTypes, argNames);
 				
 				functions.add(function);
 			}

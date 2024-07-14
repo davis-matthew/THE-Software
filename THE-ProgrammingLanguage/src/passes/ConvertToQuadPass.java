@@ -2,7 +2,7 @@ package passes;
 
 import java.util.ArrayList;
 
-import parsing.Instruction;
+import instructions.Instruction;
 import parsing.QuadInstruction;
 
 // This pass converts all Instructions to QuadInstructions
