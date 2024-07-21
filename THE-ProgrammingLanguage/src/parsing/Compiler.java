@@ -143,18 +143,20 @@ public class Compiler {
 		
 		Instruction lastInstruction = instructions.get(instructions.size() - 1);
 		
+		// Find the parent of the last non-EndBlock instruction
+		Instruction lastParent = null;
+		if (lastInstruction instanceof EndBlockInstr) {
+			lastParent = ((EndBlockInstr)lastInstruction).parentInstruction.parentInstruction;
+		} else {
+			lastParent = lastInstruction.parentInstruction;
+		}
+		
 		// If we are at the end of the main function, then add a closing bracket
-		if (lastInstruction.parentInstruction instanceof FunctionDefInstr) {
-			if (((FunctionDefInstr)lastInstruction.parentInstruction).functionThatWasDefined.name.equals("main")) {
-				if (lastInstruction instanceof EndBlockInstr) {
-					printError("Extra ']' at end of program");
-				} else if (lastInstruction instanceof StartBlockInstr) {
-					printError("Extra '[' at end of program");
-				} else {
-					EndBlockInstr mainEnd = new EndBlockInstr(lastInstruction.parentInstruction, "end main");
-					instructions.add(mainEnd);
-					lastInstruction = mainEnd;
-				}
+		if (lastParent instanceof FunctionDefInstr) {
+			if (((FunctionDefInstr)lastParent).functionThatWasDefined.name.equals("main")) {
+				EndBlockInstr mainEnd = new EndBlockInstr(lastParent, "end main");
+				instructions.add(mainEnd);
+				lastInstruction = mainEnd;
 			}
 		}
 		
