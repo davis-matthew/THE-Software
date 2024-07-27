@@ -1,6 +1,6 @@
 package instructions;
 
-import parsing.Compiler;
+import parsing.CompilePass;
 
 public class BoolNotInstr extends Instruction {
 	
@@ -9,7 +9,7 @@ public class BoolNotInstr extends Instruction {
 	public BoolNotInstr(Instruction parentInstruction, String debugString, Instruction arg) {
 		super(parentInstruction, null, debugString);
 		this.arg = arg;
-		this.returnType = Compiler.getReturnTypeFromInstructionAndOperands(this, arg.returnType, null);
+		this.returnType = CompilePass.getReturnTypeFromInstructionAndOperands(this, arg.returnType, null);
 	}
 	
 	public Instruction[] getAllArgs() {

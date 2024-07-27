@@ -1366,7 +1366,7 @@ public class ParseUtil {
 	}
 	
 	static void print(Object o) {
-		if (Compiler.debugPrintOn) {
+		if (CompilePass.debugPrintOn) {
 			System.out.println(o);
 		}
 	}

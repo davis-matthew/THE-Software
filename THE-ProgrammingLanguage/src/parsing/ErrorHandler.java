@@ -5,10 +5,10 @@ public class ErrorHandler {
 	// Print an error message, then exit the program.
 	public static void printError(String message) {
 		System.out.println(message);
-		if (Compiler.currentParsingLineNumber < Compiler.lines.length) {
-			System.out.println("'" + Compiler.lines[Compiler.currentParsingLineNumber] + "'");
+		if (CompilePass.currentParsingLineNumber < CompilePass.lines.length) {
+			System.out.println("'" + CompilePass.lines[CompilePass.currentParsingLineNumber] + "'");
 		}
-		System.out.println("(on line " + (Compiler.currentParsingLineNumber + 1) + ")");
+		System.out.println("(on line " + (CompilePass.currentParsingLineNumber + 1) + ")");
 		
 		StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
 		for (int i = 2; i < stackTrace.length-1; i++) {
