@@ -85,7 +85,83 @@ void generateModule() {
 //     M->setDataLayout(DataLayout);
 
     
+    for(THEInstruction inst : insts) {
+        switch(inst.getType()) {
+            case(THEInstructionType::FunctionDefinition):
+            {
+                auto i32 = builder.getInt32Ty(); //TODO: all types
+                auto funcType = FunctionType::get(i32, false);
+                auto func = Function::Create(funcType, Function::ExternalLinkage, inst.getName(), M);
+                auto entry = BasicBlock::Create(context, "entryblock", func);
+                builder.SetInsertPoint(entry);
 
+                inst.setResultIRInst(func);
+            }
+            case(THEInstructionType::Given):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::AllocVar):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Store):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Load):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Equal):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::If):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::ToString):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Print):
+            {
+                auto printfFunc = M.getFunction("printf");
+                if(printfFunc == nullptr) { //create printf if not defined yet
+                    auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
+                    printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
+                }
+                auto res = builder.CreateCall(printfFunc, {inst.getArgs()[0].getResultIRInst()});
+
+                inst.setResultIRInst(res);
+            }
+            case(THEInstructionType::EndBlock):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Else):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Loop):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::BoolNot):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            case(THEInstructionType::Break):
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+            default:
+            {
+                llvm::outs() << "Unhandled Instruction\n";
+            }
+        }
+    }
     auto i32 = builder.getInt32Ty();
     auto mainType = FunctionType::get(i32, false);
     auto mainFunc = Function::Create(mainType, Function::ExternalLinkage, "main", M);

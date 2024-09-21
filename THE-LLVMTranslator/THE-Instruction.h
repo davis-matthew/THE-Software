@@ -49,10 +49,6 @@ class THEInstruction {
 public:
     THEInstruction(std::string t) {
         parseInstruction(t);
-        t = trimLinePrefix(t);
-        commandType = getCommand(t);
-        //Command 'string'? (arg1, arg2, ...)?->?type of var 'name' Parent=#
-
     }
 
     void parseInstruction(std::string t) {
@@ -87,6 +83,9 @@ public:
         //parse type
         //parse name
         //parse parent
+
+        //Command 'string'? (arg1, arg2, ...)?->?type of var 'name' Parent=#
+
     }
     
     void createInstructionInIR(llvm::Module &M, llvm::IRBuilder<> &builder) {
