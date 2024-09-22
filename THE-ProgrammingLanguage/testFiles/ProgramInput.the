@@ -11,6 +11,10 @@ elseif x = 5
 	]
 ]
 
+int myFunc(int x, string y)
+	print("Hello")
+]
+
 /*
 for int i = 1, 5
 	print("HI")

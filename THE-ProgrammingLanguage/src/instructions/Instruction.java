@@ -196,6 +196,23 @@ public abstract class Instruction {
 			}
 			s += ")";
 		}
+		if (this instanceof FunctionDefInstr) {
+			FunctionDefInstr instr = (FunctionDefInstr)this;
+			Type[] args = instr.functionThatWasDefined.argTypes;
+			s += "(";
+			for (int i = 0; i < args.length; i++) {
+				if (i != 0) {
+					s += ", ";
+				}
+				s += args[i];
+			}
+			s += ")";
+			
+			// For function definitions, we have a special way of handling returns.
+			if (instr.functionThatWasDefined.returnType != null) {
+				s += "->" + instr.functionThatWasDefined.returnType;
+			}
+		}
 		
 		// Print the return type, if there is one
 		if (returnType != null) {
@@ -224,6 +241,8 @@ public abstract class Instruction {
 		
 		if (parentInstruction != null) {
 			s += " Parent=" + parentInstruction.id;
+		} else {
+			s += " Parent=-1";
 		}
 		
 		if (this instanceof IfInstr) {

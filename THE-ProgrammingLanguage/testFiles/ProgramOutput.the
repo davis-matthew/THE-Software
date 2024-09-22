@@ -1,4 +1,4 @@
-0   FunctionDef 'int main()'
+0   FunctionDef()->int 'int main()' Parent=-1
 1   | Given->int '1' Parent=0
 2   | AllocVar->int* (x declared) 'int x' Parent=0
 3   | Store(int* 2, int 1) 'x = 1' Parent=0
@@ -43,3 +43,8 @@
 42  | | | EndBlock 'end ' Parent=21
 43  | | EndBlock 'end ' Parent=12
 44  | EndBlock 'end main' Parent=0
+45  FunctionDef(int, string)->int 'int myFunc(int x, string y)' Parent=-1
+46  | Given->string '"Hello"' Parent=45
+47  | ToString(string 46)->string '"Hello"' Parent=45
+48  | Print(string 47) '"Hello"' Parent=45
+49  | EndBlock 'end int myFunc(int x, string y)' Parent=45
