@@ -86,81 +86,145 @@ void generateModule() {
 
     
     for(THEInstruction inst : insts) {
-        switch(inst.getType()) {
-            case(THEInstructionType::FunctionDefinition):
-            {
-                auto i32 = builder.getInt32Ty(); //TODO: all types
-                auto funcType = FunctionType::get(i32, false);
-                auto func = Function::Create(funcType, Function::ExternalLinkage, inst.getName(), M);
-                auto entry = BasicBlock::Create(context, "entryblock", func);
-                builder.SetInsertPoint(entry);
+        std::vector<llvm::Value*> IRargs = std::vector<llvm::Value*>(args.size());
+        for(int i = 0; i < args.size(); i++) {
+            IRargs[i] = args[i].getResultIRInst();
+        }
 
-                inst.setResultIRInst(func);
+        Instruction res = nullptr;
+        switch(inst.getType()) {
+            case THEInstructionType::Add: {
+                res = builder.CreateAdd(IRargs[0], IRargs[1]); 
+                break;
             }
-            case(THEInstructionType::Given):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Sub: {
+                res = builder.CreateSub(IRargs[0], IRargs[1]);
+                break;
             }
-            case(THEInstructionType::AllocVar):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Mult: {
+                res = builder.CreateMul(IRargs[0], IRargs[1]);
+                break;
             }
-            case(THEInstructionType::Store):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Divide: {
+                res = builder.CreateSDiv(IRargs[0], IRargs[1]); // signed division
+                break;
             }
-            case(THEInstructionType::Load):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Power: {
+                //TODO
+                //FIXME: this is not available as an instruction directly in LLVM. Maybe some binary exponentiation tricks would be nice
             }
-            case(THEInstructionType::Equal):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Modulo: {
+                res = builder.CreateSRem(IRargs[0], IRargs[1]); // signed remainder
+                break;
             }
-            case(THEInstructionType::If):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::BoolAnd:
+            case THEInstructionType::BitAnd: {
+                res = builder.CreateAnd(IRargs[0], IRargs[1]);
+                break;
             }
-            case(THEInstructionType::ToString):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::BoolOr:
+            case THEInstructionType::BitOr: {
+                 res = builder.CreateOr(IRargs[0], IRargs[1]);
+                break;
             }
-            case(THEInstructionType::Print):
-            {
+            case THEInstructionType::RefEqual:
+            case THEInstructionType::Equal: {
+                res = builder.CreateICmpEQ(IRargs[0], IRargs[1]);
+                break;
+            }
+            case THEInstructionType::RefNotEqual:
+            case THEInstructionType::NotEqual: {
+                res = builder.CreateICmpNE(IRargs[0], IRargs[1]);
+                break;
+            }
+            case THEInstructionType::Less: {
+                res = builder.CreateICmpSLT(IRargs[0], IRargs[1]); // signed comparison
+                break;
+            }
+            case THEInstructionType::LessEqual: {
+                res = builder.CreateICmpSLE(IRargs[0], IRargs[1]); // signed comparison
+                break;
+            }
+            case THEInstructionType::Greater: {
+                res = builder.CreateICmpSGT(IRargs[0], IRargs[1]); // signed comparison
+                break;
+            }
+            case THEInstructionType::GreaterEqual: {
+                res = builder.CreateICmpSGE(IRargs[0], IRargs[1]); // signed comparison
+                break;
+            }
+            case THEInstructionType::Concat: {
+                //TODO
+            }
+            case THEInstructionType::BoolNot: {
+                res = builder.CreateXor(Irargs[0], Builder.getInt1(true));
+                break;
+            }
+            case THEInstructionType::BitNot: {
+                res = builder.CreateXor(IRargs[0], ConstantInt::get(IRargs[0]->getType(), -1));
+                break;
+            }
+            case THEInstructionType::ToString: {
+                //TODO: Not sure this does anything in LLVM.
+            }
+            case THEInstructionType::Load: {
+                res = builder.CreateLoad(IRargs[0]);
+                break;
+            }
+            case THEInstructionType::Print: {
                 auto printfFunc = M.getFunction("printf");
-                if(printfFunc == nullptr) { //create printf if not defined yet
+                if(printfFunc == nullptr) { // create printf if not defined yet
                     auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
                     printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
                 }
-                auto res = builder.CreateCall(printfFunc, {inst.getArgs()[0].getResultIRInst()});
+                res = builder.CreateCall(printfFunc, {IRargs[0]});
+                break;
+            }
+            case THEInstructionType::Identity: {
+                //TODO
+            }
+            case THEInstructionType::Store: {
+                res = builder.CreateLoad(IRargs[1],IRargs[0]); // value, location
+                break;
+            }
+            case THEInstructionType::GetElement: {
+                //TODO
+            }
+            case THEInstructionType::AllocArr: {
+                //TODO
+            }
+            case THEInstructionType::ArrLength: {
+                //TODO
+            }
+            case THEInstructionType::FunctionDef: {
+                auto i32 = builder.getInt32Ty(); //TODO: all types
+                auto funcType = FunctionType::get(i32, false);
+                res = Function::Create(funcType, Function::ExternalLinkage, inst.getName(), M);
+                auto entry = BasicBlock::Create(context, "entryblock", res);
+                builder.SetInsertPoint(entry);
 
-                inst.setResultIRInst(res);
+                break;
             }
-            case(THEInstructionType::EndBlock):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::FunctionCall: {
+                //TODO
             }
-            case(THEInstructionType::Else):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::AllocVar: {
+                //TODO
             }
-            case(THEInstructionType::Loop):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::ArrLength: {
+                //TODO
             }
-            case(THEInstructionType::BoolNot):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::If: {
+                //TODO
             }
-            case(THEInstructionType::Break):
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            case THEInstructionType::Else: {
+                //TODO
             }
-            default:
-            {
-                llvm::outs() << "Unhandled Instruction\n";
+            default: {
+                throw std::runtime_error("Unknown instruction type.");
             }
         }
+        inst.setResultIRInst(res);
     }
     auto i32 = builder.getInt32Ty();
     auto mainType = FunctionType::get(i32, false);
