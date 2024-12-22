@@ -1,20 +1,25 @@
 
+int myFunc()
+	
+]
+
+/*
 int x = 1
 if (x = 2)
-	print("Hello")
+	print("hello1")
 elseif x = 4
-	print("aslkjdf")
+	print("superpotato")
 elseif x = 5
-	print("MEAT2")
+	print("meat2")
 	while (1 = x)
 		print("asdf")
 	]
-
-	myFunc(1, "asdf")
+	int ret = myFunc(1, "funcarg")
+	print(ret)
 ]
 
-void myFunc(int x, string y)
-	print("Hello")
+int myFunc(int x, string y)
+	return 3
 ]
 //*/
 

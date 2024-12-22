@@ -119,6 +119,13 @@ public class ParseUtil {
 		return text.split("\n");
 	}
 	
+	static String typeToString(Type t) {
+		if (t == null) {
+			return "void";
+		}
+		return t.toString();
+	}
+	
 	// Return true if there are excess characters at the end of this line after the given function content
 	static void checkForExcessCharacters(String line, String content) {
 		

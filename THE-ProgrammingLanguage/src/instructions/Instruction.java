@@ -360,10 +360,13 @@ public abstract class Instruction {
 		return null;
 	}
 	
-	// Return true if this is an 'If' or 'Else'
-	public boolean isBranch() {
+	// Return true if this statement can make the code jump to another location
+	public boolean isJump() {
 		return this instanceof IfInstr ||
-				this instanceof ElseInstr;
+				this instanceof ElseInstr ||
+				this instanceof BreakInstr ||
+				this instanceof ContinueInstr ||
+				this instanceof ReturnInstr;
 	}
 	
 	// Return true if this instruction restricts the scope of the contents
@@ -377,16 +380,10 @@ public abstract class Instruction {
 	
 	// Return true if this instruction has undetectable consequences.
 	// For example, system calls, print, and file manipulation.
-	public boolean hasSideEffect(ArrayList<Instruction> instructions) {
+	public boolean hasGlobalSideEffect(ArrayList<Instruction> instructions) {
 		
 		if (this instanceof PrintInstr) {
 			return true; // Print always has side effects
-		} else if (this instanceof BreakInstr) {
-			return true;
-		} else if (this instanceof ContinueInstr) {
-			return true;
-		} else if (this instanceof StoreInstr) {
-			return true; // TODO sometimes StoreInstr can be removed.
 		}
 		
 		// If this is a function call, determine if it has any side effects inside it
@@ -408,7 +405,7 @@ public abstract class Instruction {
 				for (; i < instructions.size(); i++) {
 					Instruction instr = instructions.get(i);
 					if (funcDefInstr.isAncestorOf(instr)) {
-						if (instr.hasSideEffect(instructions)) {
+						if (instr.hasGlobalSideEffect(instructions)) {
 							return true;
 						}
 					} else {

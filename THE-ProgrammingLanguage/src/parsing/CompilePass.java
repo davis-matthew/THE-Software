@@ -44,6 +44,7 @@ import instructions.StartBlockInstr;
 import instructions.StoreInstr;
 import instructions.SubInstr;
 import instructions.ToStringInstr;
+import passes.CheckReturnPathsPass;
 
 import static parsing.ErrorHandler.*;
 
@@ -123,6 +124,7 @@ public class CompilePass {
 		}
 		
 		// TODO verify that all paths through a function return the proper type
+		//CheckReturnPathsPass.checkReturnPaths(instructions);
 		
 		return instructions;
 	}
@@ -172,7 +174,7 @@ public class CompilePass {
 			if (parentFunc == null) {
 				printError("Instruction is not inside a function");
 			}
-			Type funcReturnType = parentFunc.returnType;
+			Type funcReturnType = parentFunc.functionThatWasDefined.returnType;
 			
 			Type statementReturnType = null;
 			Instruction lastInstruction = null;
@@ -183,8 +185,20 @@ public class CompilePass {
 			}
 			
 			// Check that the type of the function matches the type of the return
-			if (funcReturnType != statementReturnType) {
-				printError("Return type mismatch: Got " + statementReturnType + " expected " + funcReturnType);
+			if (statementReturnType != funcReturnType) {
+				boolean isTypeMismatch = false;
+				if (statementReturnType != null && funcReturnType != null) {
+					if (!statementReturnType.canImplicitlyCastTo(funcReturnType)) {
+						isTypeMismatch = true;
+					}
+				} else {
+					isTypeMismatch = true;
+				}
+				
+				if (isTypeMismatch) {
+					printError("Return type mismatch: Got " + ParseUtil.typeToString(statementReturnType) +
+							", expected " + ParseUtil.typeToString(funcReturnType));
+				}
 			}
 			
 			ReturnInstr returnInstr = new ReturnInstr(parentInstruction, line.trim(), lastInstruction);
@@ -1870,10 +1884,6 @@ public class CompilePass {
 	// Return the closest ancestor instruction of the given type, or null if none is found
 	private static <T> T findNearestAncestorOfType(Instruction parent, Class<T> type) {
 		while (parent != null) {
-			// Loops and conditional structures may not contain a routine
-			if (parent instanceof FunctionDefInstr) {
-				break;
-			}
 			if (type.isInstance(parent)) {
 				return type.cast(parent);
 			}

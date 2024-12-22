@@ -3,6 +3,7 @@ package passes;
 import java.util.ArrayList;
 
 import instructions.Instruction;
+import instructions.StoreInstr;
 
 /* This pass removes unused instructions from the program.
 For example:
@@ -43,7 +44,9 @@ public class DeleteUnusedInstructionsPass {
 			// have non-obvious side effects, or don't return anything to use anyway.
 			if (!instr.doesStartScope() &&
 				!instr.doesEndScope() &&
-				!instr.hasSideEffect(instructions)) {
+				!instr.isJump() &&
+				!instr.hasGlobalSideEffect(instructions) &&
+				!(instr instanceof StoreInstr)) { // TODO sometimes StoreInstr can be optimized out
 				
 				// If this instruction does not have any references,
 				// then it can be optimized out.
