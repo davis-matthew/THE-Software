@@ -1,2 +1,8 @@
 *.class
 **/.classpath
+THE-ProgrammingLanguage/testFiles/ProgramInput.the
+THE-ProgrammingLanguage/testFiles/ProgramOutput.the
+llvm-project*/
+.vscode/
+THE-LLVMTranslator/bin/
+THE-LLVMTranslator/build/
