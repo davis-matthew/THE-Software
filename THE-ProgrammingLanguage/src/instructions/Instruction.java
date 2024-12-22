@@ -246,16 +246,6 @@ public abstract class Instruction {
 			FunctionDefInstr instr = (FunctionDefInstr)this;
 			s += " [" + instr.functionThatWasDefined.name + "]";
 		}
-		if (this instanceof AllocVarInstr) {
-			AllocVarInstr instr = (AllocVarInstr)this;
-			s += " (" + instr.varName + " declared)";
-		}
-		if (this instanceof ArrLengthInstr) {
-			ArrLengthInstr instr = (ArrLengthInstr)this;
-			if (instr.getElementCount) {
-				s += " [all elements]";
-			}
-		}
 		
 		if (this instanceof IfInstr) {
 			IfInstr instr = (IfInstr)this;
@@ -290,6 +280,16 @@ public abstract class Instruction {
 		
 		if (debugString != null && !debugString.isEmpty()) {
 			s += " '" + debugString + "'";
+		}
+		if (this instanceof AllocVarInstr) {
+			AllocVarInstr instr = (AllocVarInstr)this;
+			s += " (" + instr.varName + " declared)";
+		}
+		if (this instanceof ArrLengthInstr) {
+			ArrLengthInstr instr = (ArrLengthInstr)this;
+			if (instr.getElementCount) {
+				s += " [all elements]";
+			}
 		}
 		
 		return s;
