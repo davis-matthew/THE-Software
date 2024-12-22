@@ -1,5 +1,7 @@
 package parsing;
 
+import instructions.FunctionDefInstr;
+
 // This class stores information about a program function
 
 public class Function {
@@ -7,6 +9,7 @@ public class Function {
 	public Type returnType;
 	public Type[] argTypes;
 	public String[] argNames;
+	public FunctionDefInstr functionDefInstr; // Instruction that defined this function
 	
 	// Create a new function of a certain name and type
 	public Function(String name, Type returnType, Type[] argTypes, String[] argNames) {

@@ -43,8 +43,8 @@ public class DeleteUnusedInstructionsPass {
 			// have non-obvious side effects, or don't return anything to use anyway.
 			if (!instr.doesStartScope() &&
 				!instr.doesEndScope() &&
-				!instr.hasSideEffect() &&
-				instr.returnType != null) {
+				!instr.hasSideEffect(instructions) &&
+				instr.returnType != null /* TODO improve this check */) {
 				
 				// If this instruction does not have any references,
 				// then it can be optimized out.

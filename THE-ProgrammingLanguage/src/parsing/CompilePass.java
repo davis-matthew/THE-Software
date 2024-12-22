@@ -630,6 +630,7 @@ public class CompilePass {
 				// Create the function definition.
 				// TODO add multiple returns.
 				FunctionDefInstr funcDefInstr = new FunctionDefInstr(null, line, function);
+				function.functionDefInstr = funcDefInstr;
 				instructions.add(funcDefInstr);
 				
 				// TODO study LLVM to figure out how to pass arguments into the function
@@ -1193,8 +1194,8 @@ public class CompilePass {
 			
 			Function func = findFunctionByNameAndArgs(functionName, argTypes);
 			
-			// Create the function Call instruction TODO add arguments here!
-			FunctionCallInstr callInstr = new FunctionCallInstr(parentInstruction, text, func);
+			// Create the function Call instruction
+			FunctionCallInstr callInstr = new FunctionCallInstr(parentInstruction, text, func, args);
 			instructions.add(callInstr);
 		}
 	}

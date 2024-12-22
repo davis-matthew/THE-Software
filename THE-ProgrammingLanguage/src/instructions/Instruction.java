@@ -1,5 +1,7 @@
 package instructions;
 
+import java.util.ArrayList;
+
 import parsing.Type;
 
 // This class contains information about a single instruction (add, sub, mov, math, if, while, ...)
@@ -162,6 +164,10 @@ public abstract class Instruction {
 			IdentityInstr instr = (IdentityInstr)this;
 			s += "(" + instr.arg.returnType + " " + instr.arg.id + ")";
 		}
+		if (this instanceof IfInstr) {
+			IfInstr instr = (IfInstr)this;
+			s += "(" + instr.conditionInstr.returnType + " " + instr.conditionInstr.id + ")";
+		}
 		
 		// Other types of instructions
 		if (this instanceof StoreInstr) {
@@ -213,6 +219,18 @@ public abstract class Instruction {
 				s += "->" + instr.functionThatWasDefined.returnType;
 			}
 		}
+		if (this instanceof FunctionCallInstr) {
+			FunctionCallInstr instr = (FunctionCallInstr)this;
+			Instruction[] args = instr.args;
+			s += "(";
+			for (int i = 0; i < args.length; i++) {
+				if (i != 0) {
+					s += ", ";
+				}
+				s += args[i].returnType + " " + args[i].id;
+			}
+			s += ")";
+		}
 		
 		// Print the return type, if there is one
 		if (returnType != null) {
@@ -222,7 +240,11 @@ public abstract class Instruction {
 		// Print some stuff after the return
 		if (this instanceof FunctionCallInstr) {
 			FunctionCallInstr instr = (FunctionCallInstr)this;
-			s += " [call " + instr.functionThatWasCalled.name + "]";
+			s += " [" + instr.functionThatWasCalled.name + "]";
+		}
+		if (this instanceof FunctionDefInstr) {
+			FunctionDefInstr instr = (FunctionDefInstr)this;
+			s += " [" + instr.functionThatWasDefined.name + "]";
 		}
 		if (this instanceof AllocVarInstr) {
 			AllocVarInstr instr = (AllocVarInstr)this;
@@ -233,16 +255,6 @@ public abstract class Instruction {
 			if (instr.getElementCount) {
 				s += " [all elements]";
 			}
-		}
-		
-		if (debugString != null && !debugString.isEmpty()) {
-			s += " '" + debugString + "'";
-		}
-		
-		if (parentInstruction != null) {
-			s += " Parent=" + parentInstruction.id;
-		} else {
-			s += " Parent=-1";
 		}
 		
 		if (this instanceof IfInstr) {
@@ -268,6 +280,16 @@ public abstract class Instruction {
 			} else {
 				print("*****Null ifInstr found*****");
 			}
+		}
+		
+		if (parentInstruction != null) {
+			s += " Parent=" + parentInstruction.id;
+		} else {
+			s += " Parent=-1";
+		}
+		
+		if (debugString != null && !debugString.isEmpty()) {
+			s += " '" + debugString + "'";
 		}
 		
 		return s;
@@ -351,8 +373,51 @@ public abstract class Instruction {
 	
 	// Return true if this instruction has undetectable consequences.
 	// For example, system calls, print, and file manipulation.
-	public boolean hasSideEffect() {
-		return this instanceof PrintInstr;
+	public boolean hasSideEffect(ArrayList<Instruction> instructions) {
+		if (this instanceof PrintInstr) {
+			return true;
+		}
+		
+		if (this instanceof FunctionCallInstr) {
+			FunctionCallInstr funcCallInstr = (FunctionCallInstr)this;
+			FunctionDefInstr funcDefInstr = funcCallInstr.functionThatWasCalled.functionDefInstr;
+			
+			// Find the index of the instruction that defined the function
+			int i;
+			for (i = 0; i < instructions.size(); i++) {
+				if (instructions.get(i) == funcDefInstr) {
+					break;
+				}
+			}
+			
+			// Iterate over all instructions in this function
+			if (i < instructions.size() - 1) {
+				i++;
+				for (; i < instructions.size(); i++) {
+					Instruction instr = instructions.get(i);
+					if (funcDefInstr.isAncestorOf(instr)) {
+						if (instr.hasSideEffect(instructions)) {
+							return true;
+						}
+					} else {
+						// Once we leave the function, then we don't need to search any further
+						break;
+					}
+				}
+			}
+		}
+		
+		return false;
+	}
+	
+	public boolean isAncestorOf(Instruction childInstr) {
+		while (childInstr != null && childInstr.parentInstruction != this) {
+			childInstr = childInstr.parentInstruction;
+		}
+		if (childInstr == null) {
+			return false;
+		}
+		return childInstr.parentInstruction == this;
 	}
 	
 	// Return true if this instruction closes a scope block (such as end-while)

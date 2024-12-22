@@ -9,6 +9,8 @@ elseif x = 5
 	while (1 = x)
 		print("asdf")
 	]
+
+	myFunc(1, "asdf")
 ]
 
 int myFunc(int x, string y)

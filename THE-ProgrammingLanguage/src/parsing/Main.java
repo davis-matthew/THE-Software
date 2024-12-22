@@ -8,8 +8,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 
 import instructions.Instruction;
-import instructions.QuadInstruction;
-import passes.ConvertToQuadPass;
 import passes.DeleteUnusedInstructionsPass;
 
 // Created by Daniel Williams
@@ -44,15 +42,6 @@ public class Main {
 		print("------- Delete Unused Instructions Pass -------\n");
 		for (int i = 0; i < instructions.size(); i++) {
 			print(instructions.get(i));
-		}
-		print("");
-		
-		// Convert all instructions to QuadIR
-		ArrayList<QuadInstruction> quadInstructions = ConvertToQuadPass.convertToQuadInstructions(instructions);
-
-		print("----------- Quad Instructions -----------\n");
-		for (int i = 0; i < quadInstructions.size(); i++) {
-			print(quadInstructions.get(i));
 		}
 		print("");
 		
