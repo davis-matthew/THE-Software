@@ -1,35 +1,9 @@
-#include <iostream>
-#include <fstream>
-#include <optional>
-
-#include <llvm/IR/Module.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/LegacyPassManager.h>
-
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/raw_ostream.h>
-
-#include <llvm/Target/CodeGenCWrappers.h>
-#include <llvm/Target/TargetMachine.h>
-
-#include <llvm/MC/TargetRegistry.h>
-
-#include <llvm/TargetParser/Host.h>
-#include <llvm/TargetParser/SubtargetFeature.h>
-
-#include <llvm/Object/ObjectFile.h>
-
-#include <llvm/Bitcode/BitcodeWriter.h>
-
-#include "THE-Instruction.h"
+#include "THE-LLVMTranslator.h"
 
 using namespace llvm;
 
 std::string filename = "";
 llvm::LLVMContext context;
-std::vector<THEInstruction> insts;
 Module *M = nullptr;
 TargetMachine *targetMachine;
 
@@ -38,7 +12,7 @@ TargetMachine *targetMachine;
 void processArgs(int argc, char** argv) {
     if(argc == 1){
         std::cout << "Usage: THE-LLVMTranslator <path/to/THE-COMPILER/file>\n";
-        std::terminate();
+        std::exit(0);
     }
     filename = argv[1];
 }
@@ -56,6 +30,7 @@ void loadFile() {
     else {
         std::cerr << "Cannot open file!" << std::endl;
     }
+    std::cout << "Parsed Input Successfully" << std::endl;
 }
 void generateModule() {
 //     InitializeAllTargetInfos();
@@ -83,18 +58,46 @@ void generateModule() {
 // std::cout << "a3\n";
 //     auto DataLayout = targetMachine->createDataLayout();
 //     M->setDataLayout(DataLayout);
-
+    auto i32 = builder.getInt32Ty();
+    auto mainType = FunctionType::get(i32, false);
+    auto mainFunc = Function::Create(mainType, Function::ExternalLinkage, "main", M);
+    auto entry = BasicBlock::Create(context, "entry", mainFunc);
+    builder.SetInsertPoint(entry);
     
-    for(THEInstruction inst : insts) {
-        std::vector<llvm::Value*> IRargs = std::vector<llvm::Value*>(args.size());
+    //TODO: SEGFAULTS IF REFERENCES ARG WHICH ISN'T IMPLEMENTED YET.
+    for(int id = 0; id < insts.size(); id++){
+        THEInstruction* inst = &(insts[id]);
+        std::vector<int> args = inst->getArgs();
+        std::vector<llvm::Value*> IRargs = std::vector<llvm::Value*>(inst->getArgs().size());
         for(int i = 0; i < args.size(); i++) {
-            IRargs[i] = args[i].getResultIRInst();
+            IRargs[i] = insts[args[i]].getResultIRInst();
         }
-
-        Instruction res = nullptr;
-        switch(inst.getType()) {
+        Value* res = nullptr;
+        switch(inst->getType()) {
+            case THEInstructionType::Given: {
+                std::string resultType = inst->getResultType();
+                std::cout << "Given of type: {" << resultType <<"} w/ value {"<<inst->getGivenValue()<<"}"<< "\n";
+                if( resultType == "int" ) {
+                    res = builder.getInt32(stoi(inst->getGivenValue()));
+                }
+                else if( resultType == "string" ) {
+                    //TODO!
+                }
+                else if( resultType == "bool" ) {
+                    if ( inst->getGivenValue() == "true" ) {
+                        res = builder.getTrue();
+                    }
+                    else if( inst->getGivenValue() == "false" ) {
+                        res = builder.getFalse();
+                    }
+                    else {
+                        //TODO!
+                    }
+                }
+                break;
+            }
             case THEInstructionType::Add: {
-                res = builder.CreateAdd(IRargs[0], IRargs[1]); 
+                res = builder.CreateAdd(IRargs[0], IRargs[1]);
                 break;
             }
             case THEInstructionType::Sub: {
@@ -109,10 +112,10 @@ void generateModule() {
                 res = builder.CreateSDiv(IRargs[0], IRargs[1]); // signed division
                 break;
             }
-            case THEInstructionType::Power: {
-                //TODO
-                //FIXME: this is not available as an instruction directly in LLVM. Maybe some binary exponentiation tricks would be nice
-            }
+    //         case THEInstructionType::Power: {
+    //             //TODO
+    //             //FIXME: this is not available as an instruction directly in LLVM. Maybe some binary exponentiation tricks would be nice
+    //         }
             case THEInstructionType::Modulo: {
                 res = builder.CreateSRem(IRargs[0], IRargs[1]); // signed remainder
                 break;
@@ -124,7 +127,7 @@ void generateModule() {
             }
             case THEInstructionType::BoolOr:
             case THEInstructionType::BitOr: {
-                 res = builder.CreateOr(IRargs[0], IRargs[1]);
+                res = builder.CreateOr(IRargs[0], IRargs[1]);
                 break;
             }
             case THEInstructionType::RefEqual:
@@ -153,91 +156,86 @@ void generateModule() {
                 res = builder.CreateICmpSGE(IRargs[0], IRargs[1]); // signed comparison
                 break;
             }
-            case THEInstructionType::Concat: {
-                //TODO
-            }
+    //         case THEInstructionType::Concat: {
+    //             //TODO
+    //         }
             case THEInstructionType::BoolNot: {
-                res = builder.CreateXor(Irargs[0], Builder.getInt1(true));
+                res = builder.CreateXor(IRargs[0], builder.getInt1(true));
                 break;
             }
             case THEInstructionType::BitNot: {
                 res = builder.CreateXor(IRargs[0], ConstantInt::get(IRargs[0]->getType(), -1));
                 break;
             }
-            case THEInstructionType::ToString: {
-                //TODO: Not sure this does anything in LLVM.
-            }
-            case THEInstructionType::Load: {
-                res = builder.CreateLoad(IRargs[0]);
-                break;
-            }
-            case THEInstructionType::Print: {
-                auto printfFunc = M.getFunction("printf");
-                if(printfFunc == nullptr) { // create printf if not defined yet
-                    auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
-                    printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
-                }
-                res = builder.CreateCall(printfFunc, {IRargs[0]});
-                break;
-            }
-            case THEInstructionType::Identity: {
-                //TODO
-            }
-            case THEInstructionType::Store: {
-                res = builder.CreateLoad(IRargs[1],IRargs[0]); // value, location
-                break;
-            }
-            case THEInstructionType::GetElement: {
-                //TODO
-            }
-            case THEInstructionType::AllocArr: {
-                //TODO
-            }
-            case THEInstructionType::ArrLength: {
-                //TODO
-            }
-            case THEInstructionType::FunctionDef: {
-                auto i32 = builder.getInt32Ty(); //TODO: all types
-                auto funcType = FunctionType::get(i32, false);
-                res = Function::Create(funcType, Function::ExternalLinkage, inst.getName(), M);
-                auto entry = BasicBlock::Create(context, "entryblock", res);
-                builder.SetInsertPoint(entry);
+    //         case THEInstructionType::ToString: {
+    //             //TODO: Not sure this does anything in LLVM.
+    //         }
+    //         case THEInstructionType::Load: {
+    //             res = builder.CreateLoad(IRargs[0]);
+    //             break;
+    //         }
+    //         case THEInstructionType::Print: {
+    //             auto printfFunc = M.getFunction("printf");
+    //             if(printfFunc == nullptr) { // create printf if not defined yet
+    //                 auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
+    //                 printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
+    //             }
+    //             res = builder.CreateCall(printfFunc, {IRargs[0]});
+    //             break;
+    //         }
+    //         case THEInstructionType::Identity: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::Store: {
+    //             res = builder.CreateLoad(IRargs[1],IRargs[0]); // value, location
+    //             break;
+    //         }
+    //         case THEInstructionType::GetElement: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::AllocArr: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::ArrLength: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::FunctionDef: {
+    //             auto i32 = builder.getInt32Ty(); //TODO: all types
+    //             auto funcType = FunctionType::get(i32, false);
+    //             res = Function::Create(funcType, Function::ExternalLinkage, inst.getName(), M);
+    //             auto entry = BasicBlock::Create(context, "entryblock", res);
+    //             builder.SetInsertPoint(entry);
 
-                break;
-            }
-            case THEInstructionType::FunctionCall: {
-                //TODO
-            }
-            case THEInstructionType::AllocVar: {
-                //TODO
-            }
-            case THEInstructionType::ArrLength: {
-                //TODO
-            }
-            case THEInstructionType::If: {
-                //TODO
-            }
-            case THEInstructionType::Else: {
-                //TODO
-            }
+    //             break;
+    //         }
+    //         case THEInstructionType::FunctionCall: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::AllocVar: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::If: {
+    //             //TODO
+    //         }
+    //         case THEInstructionType::Else: {
+    //             //TODO
+    //         }
             default: {
-                throw std::runtime_error("Unknown instruction type.");
+                std::cout << "Unknown instruction type encountered\n";
+                continue;
+                //throw std::runtime_error("Unknown instruction type.");
             }
         }
-        inst.setResultIRInst(res);
+        inst->setResultIRInst(res);
     }
-    auto i32 = builder.getInt32Ty();
-    auto mainType = FunctionType::get(i32, false);
-    auto mainFunc = Function::Create(mainType, Function::ExternalLinkage, "main", M);
-    auto entry = BasicBlock::Create(context, "entry", mainFunc);
-    builder.SetInsertPoint(entry);
+    
 
-    auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
-    auto printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
-    auto helloWorld = builder.CreateGlobalStringPtr("Hello World!\n");
-    builder.CreateCall(printfFunc, {helloWorld});
-    builder.CreateRet(builder.getInt32(0));
-
+    // auto printfType = FunctionType::get(builder.getInt32Ty(), PointerType::getUnqual(builder.getInt8Ty()), true);
+    // auto printfFunc = Function::Create(printfType, Function::ExternalLinkage, "printf", M);
+    // auto helloWorld = builder.CreateGlobalStringPtr("Hello World!\n");
+    // builder.CreateCall(printfFunc, {helloWorld});
+    builder.CreateRet(insts[3].getResultIRInst());
+    M->print(llvm::outs(), nullptr);
     std::error_code EC;
     raw_fd_ostream OS("filename.bc", EC, sys::fs::OF_None);
     WriteBitcodeToFile(*M, OS);
