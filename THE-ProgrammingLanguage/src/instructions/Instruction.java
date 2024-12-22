@@ -246,6 +246,10 @@ public abstract class Instruction {
 			FunctionDefInstr instr = (FunctionDefInstr)this;
 			s += " [" + instr.functionThatWasDefined.name + "]";
 		}
+		if (this instanceof GivenInstr) {
+			GivenInstr instr = (GivenInstr)this;
+			s += " [" + instr.rawValue + "]";
+		}
 		
 		if (this instanceof IfInstr) {
 			IfInstr instr = (IfInstr)this;
@@ -374,10 +378,18 @@ public abstract class Instruction {
 	// Return true if this instruction has undetectable consequences.
 	// For example, system calls, print, and file manipulation.
 	public boolean hasSideEffect(ArrayList<Instruction> instructions) {
+		
 		if (this instanceof PrintInstr) {
+			return true; // Print always has side effects
+		} else if (this instanceof BreakInstr) {
 			return true;
+		} else if (this instanceof ContinueInstr) {
+			return true;
+		} else if (this instanceof StoreInstr) {
+			return true; // TODO sometimes StoreInstr can be removed.
 		}
 		
+		// If this is a function call, determine if it has any side effects inside it
 		if (this instanceof FunctionCallInstr) {
 			FunctionCallInstr funcCallInstr = (FunctionCallInstr)this;
 			FunctionDefInstr funcDefInstr = funcCallInstr.functionThatWasCalled.functionDefInstr;

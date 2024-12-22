@@ -43,8 +43,7 @@ public class DeleteUnusedInstructionsPass {
 			// have non-obvious side effects, or don't return anything to use anyway.
 			if (!instr.doesStartScope() &&
 				!instr.doesEndScope() &&
-				!instr.hasSideEffect(instructions) &&
-				instr.returnType != null /* TODO improve this check */) {
+				!instr.hasSideEffect(instructions)) {
 				
 				// If this instruction does not have any references,
 				// then it can be optimized out.
@@ -53,9 +52,11 @@ public class DeleteUnusedInstructionsPass {
 				}
 			}
 		}
+		
+		// TODO remove unused functions
 	}
 	
-	// Local helper function:
+	// Return true if any other instruction has this instruction as an argument
 	private static boolean doesInstructionHaveReference(ArrayList<Instruction> instructions, Instruction instr) {
 		
 		for (int i = 0; i < instructions.size(); i++) {

@@ -39,6 +39,7 @@ import instructions.PowerInstr;
 import instructions.PrintInstr;
 import instructions.RefEqualInstr;
 import instructions.RefNotEqualInstr;
+import instructions.ReturnInstr;
 import instructions.StartBlockInstr;
 import instructions.StoreInstr;
 import instructions.SubInstr;
@@ -121,6 +122,8 @@ public class CompilePass {
 			printError("Missing ']' at end of program");
 		}
 		
+		// TODO verify that all paths through a function return the proper type
+		
 		return instructions;
 	}
 	
@@ -131,13 +134,13 @@ public class CompilePass {
 		final Instruction parentInstruction = findParentInstruction(instructions.size() - 1);
 		final int previousInstructionsLength = instructions.size();
 		
-		if (line.isEmpty()) {
+		if (line.trim().isEmpty()) {
 			// Empty line.  Nothing to do here.
 			
 		} else if (line.equals("break") || line.equals("continue")) { // Break or continue in loop
 			
 			// Find the nearest ancestor loop that contains this statement
-			LoopInstr parentLoop = findNearestAncestorLoop(parentInstruction);
+			LoopInstr parentLoop = findNearestAncestorOfType(parentInstruction, LoopInstr.class);
 			if (parentLoop == null) {
 				printError(ParseUtil.capitalize(line) + "-statement must be within a loop");
 			}
@@ -154,6 +157,38 @@ public class CompilePass {
 			
 			StartBlockInstr startBlockInstr = new StartBlockInstr(parentInstruction, "scope start");
 			instructions.add(startBlockInstr);
+			
+		} else if (ParseUtil.doesLineStartWith(line, "return")) { // Return
+			
+			// Get the contents of the expression being returned
+			int expressionStartIndex = "return ".length();
+			String expressionContent = "";
+			if (expressionStartIndex >= line.length() - 1) {
+				expressionContent = line.substring(expressionStartIndex).trim();
+			}
+			
+			// Determine the return type of the function we're in
+			FunctionDefInstr parentFunc = findNearestAncestorOfType(parentInstruction, FunctionDefInstr.class);
+			if (parentFunc == null) {
+				printError("Instruction is not inside a function");
+			}
+			Type funcReturnType = parentFunc.returnType;
+			
+			Type statementReturnType = null;
+			Instruction lastInstruction = null;
+			if (!expressionContent.isEmpty()) {
+				// Get the instructions for the content of this assignment
+				lastInstruction = parseExpression(parentInstruction, expressionContent);
+				statementReturnType = lastInstruction.returnType;
+			}
+			
+			// Check that the type of the function matches the type of the return
+			if (funcReturnType != statementReturnType) {
+				printError("Return type mismatch: Got " + statementReturnType + " expected " + funcReturnType);
+			}
+			
+			ReturnInstr returnInstr = new ReturnInstr(parentInstruction, line.trim(), lastInstruction);
+			instructions.add(returnInstr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "for")) { // For-loop
 			
@@ -1473,8 +1508,8 @@ public class CompilePass {
 					boolean isInConflictingScope = false;
 					
 					// If this instruction is a child of an instruction that is a ancestor of the
-					//    given instruction, then it must be true that that instruction executed if the
-					//    given instruction executed, so there might be a conflict
+					//	given instruction, then it must be true that that instruction executed if the
+					//	given instruction executed, so there might be a conflict
 					Instruction nextParent = parentInstr;
 					while (nextParent != otherParent && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -1484,7 +1519,7 @@ public class CompilePass {
 					}
 					
 					// If this instruction is a descendant of the parent of the given instruction,
-					//    then they might be in conflict due to the global scope of functions.
+					//	then they might be in conflict due to the global scope of functions.
 					nextParent = otherParent;
 					while (nextParent != parentInstr && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -1609,8 +1644,8 @@ public class CompilePass {
 					Instruction otherParent = declareInstr.parentInstruction; // May be null
 					
 					// If this instruction is a child of an instruction that is a ancestor of the
-					//    given instruction, then it must be true that that instruction executed if the
-					//    given instruction executed, so we can stop searching.
+					//	given instruction, then it must be true that that instruction executed if the
+					//	given instruction executed, so we can stop searching.
 					Instruction nextParent = parentInstr;
 					while (nextParent != otherParent && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -1625,7 +1660,7 @@ public class CompilePass {
 	}
 	
 	// Add references to all instructions that may have assigned to the given variable
-	//    until we find an instruction that is guaranteed to have assigned the given variable.
+	//	until we find an instruction that is guaranteed to have assigned the given variable.
 	// Return true if a guaranteed assignment was found.
 	private static boolean wasAssignmentGuaranteed(Instruction parentInstruction, String varName) {
 		
@@ -1649,8 +1684,8 @@ public class CompilePass {
 					Instruction otherParent = storeInstr.parentInstruction; // May be null
 					
 					// If this instruction is a direct child of an instruction that is an ancestor of the
-					//    given instruction, then it must be true that that instruction executed if the
-					//    given instruction executed, so we can stop searching.
+					//	given instruction, then it must be true that that instruction executed if the
+					//	given instruction executed, so we can stop searching.
 					Instruction nextParent = parentInstruction;
 					while (nextParent != otherParent && nextParent != null) {
 						nextParent = nextParent.parentInstruction;
@@ -1662,9 +1697,9 @@ public class CompilePass {
 					}
 					
 					// Check whether an assignment was guaranteed after this instruction
-					//     and before the instruction of interest.
+					//	 and before the instruction of interest.
 					// Consider exhaustive if-elseif-else chains, do-while loops, and other structures
-					//       for guaranteed assignments.
+					//	   for guaranteed assignments.
 					if (wasAssignmentGuaranteedHelper(i, instructions.size(), varName, parentInstruction)) {
 						return true;
 					}
@@ -1679,7 +1714,7 @@ public class CompilePass {
 	}
 	
 	// Return true if an assignment of the given variable was guaranteed between the given
-	//     start and stop instruction index within the enclosing scope of parentInstruction
+	//	 start and stop instruction index within the enclosing scope of parentInstruction
 	private static boolean wasAssignmentGuaranteedHelper(int startIndex, int stopIndex,
 				String varName, Instruction parentInstruction) {
 		
@@ -1717,7 +1752,7 @@ public class CompilePass {
 			}
 			
 			// If we are currently inside a loop, then check if the current instruction
-			//     is guaranteed to execute at least once.
+			//	 is guaranteed to execute at least once.
 			if (currentParent instanceof LoopInstr) {
 				// Search for a break or continue statement that possibly breaks this loop
 				//   before getting to the current instruction
@@ -1749,13 +1784,13 @@ public class CompilePass {
 			}
 			
 			// If we are inside a if-elseif-else structure, but not all the way at the
-			//    top of the chain, then stop searching here.
+			//	top of the chain, then stop searching here.
 			if (currentParent instanceof ElseInstr) {
 				return false;
 			}
 			
 			// If we are inside an if-elseif-else structure, and this instruction is
-			//    inside the leading if-condition.
+			//	inside the leading if-condition.
 			if (currentParent instanceof IfInstr) {
 				Instruction currentIf = currentParent;
 				
@@ -1770,7 +1805,7 @@ public class CompilePass {
 				}
 				
 				// If this chain DID end in an else-block, then we need to check if
-				//    a guaranteed assignment exists in each of the chained conditional sections.
+				//	a guaranteed assignment exists in each of the chained conditional sections.
 				currentIf = currentParent;
 				do {
 					// This must be an ElseIf or an Else block
@@ -1832,17 +1867,17 @@ public class CompilePass {
 		return null;
 	}
 	
-	// Return the closest ancestor instruction that is a Loop instruction, or null if none is found
-	static LoopInstr findNearestAncestorLoop(Instruction parent) {
-		while (parent != null && parent instanceof LoopInstr) {
+	// Return the closest ancestor instruction of the given type, or null if none is found
+	private static <T> T findNearestAncestorOfType(Instruction parent, Class<T> type) {
+		while (parent != null) {
 			// Loops and conditional structures may not contain a routine
 			if (parent instanceof FunctionDefInstr) {
 				break;
 			}
+			if (type.isInstance(parent)) {
+				return type.cast(parent);
+			}
 			parent = parent.parentInstruction;
-		}
-		if (parent instanceof LoopInstr) {
-			return (LoopInstr)parent;
 		}
 		return null;
 	}
@@ -1851,7 +1886,7 @@ public class CompilePass {
 	private static void findAllDeclaredFunctions() {
 		
 		// Add the main function manually
-		Function mainFunction = new Function("main", Type.Int, new Type[] {}, new String[] {});
+		Function mainFunction = new Function("main", null, new Type[] {}, new String[] {});
 		functions.add(mainFunction);
 		
 		// Iterate over every line in the program

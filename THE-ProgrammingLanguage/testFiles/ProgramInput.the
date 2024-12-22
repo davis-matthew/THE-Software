@@ -13,9 +13,13 @@ elseif x = 5
 	myFunc(1, "asdf")
 ]
 
-int myFunc(int x, string y)
+void myFunc(int x, string y)
 	print("Hello")
 ]
+//*/
+
+// TODO write a proper stack parser:
+//print(")")
 
 /*
 for int i = 1, 5

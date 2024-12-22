@@ -469,6 +469,11 @@ public class ParseUtil {
 	// Also return the end index of this type-string.
 	static TypeAndEnd getFirstDataType(String line) {
 		
+		// Special case for void
+		if (line.startsWith("void ")) {
+			return new TypeAndEnd(null, 4);
+		}
+		
 		for (int i = 0; i < dataTypes.length; i++) {
 			int length = dataTypes[i].length();
 			
