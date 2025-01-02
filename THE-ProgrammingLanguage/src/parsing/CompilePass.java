@@ -123,8 +123,11 @@ public class CompilePass {
 			printError("Missing ']' at end of program");
 		}
 		
+		// We are done performing line-by-line parsing.
+		currentParsingLineNumber = -1;
+		
 		// TODO verify that all paths through a function return the proper type
-		//CheckReturnPathsPass.checkReturnPaths(instructions);
+		CheckReturnPathsPass.checkReturnPaths(instructions);
 		
 		return instructions;
 	}
@@ -165,7 +168,7 @@ public class CompilePass {
 			// Get the contents of the expression being returned
 			int expressionStartIndex = "return ".length();
 			String expressionContent = "";
-			if (expressionStartIndex >= line.length() - 1) {
+			if (expressionStartIndex < line.length()) {
 				expressionContent = line.substring(expressionStartIndex).trim();
 			}
 			
@@ -680,6 +683,7 @@ public class CompilePass {
 				// TODO add multiple returns.
 				FunctionDefInstr funcDefInstr = new FunctionDefInstr(null, line, function);
 				function.functionDefInstr = funcDefInstr;
+				funcDefInstr.originalLineNumber = currentParsingLineNumber; // TODO need to put these everywhere
 				instructions.add(funcDefInstr);
 				
 				// TODO study LLVM to figure out how to pass arguments into the function

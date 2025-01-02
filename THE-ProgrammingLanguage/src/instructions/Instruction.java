@@ -14,6 +14,9 @@ public abstract class Instruction {
 	// The local instruction id
 	public final int id;
 	
+	// The original line number that this instruction was created from.
+	public int originalLineNumber;
+	
 	// A string representation of what this instruction applies to (for debug only)
 	public String debugString;
 	

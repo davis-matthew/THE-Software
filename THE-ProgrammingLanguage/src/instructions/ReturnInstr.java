@@ -2,7 +2,7 @@ package instructions;
 
 public class ReturnInstr extends Instruction {
 	
-	Instruction arg0;
+	public Instruction arg0;
 	
 	public ReturnInstr(Instruction parentInstruction, String debugString, Instruction arg) {
 		super(parentInstruction, null, debugString);

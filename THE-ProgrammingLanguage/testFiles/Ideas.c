@@ -127,6 +127,36 @@ arr.GetLength(2)
 
 
 
+
+// Example of a tough function to optimize:
+
+// Assume n >= 0
+int f1(int x, int n) {
+	int i = 0;
+	int k = 0;
+	
+	for (i = 0; i != n; i++) {
+		x += k * 5;
+		k += 1;
+		if (i >= 5) {
+			k += 3;
+		}
+	}
+	
+	return x;
+}
+
+// This is equivalent to f1.
+int f2(int x, final int n) {
+	if (n < 5) {
+		return x + (5 * (n * n - n) >> 1);
+	}
+	return x + 10 * n * n - 85 * n + 225;
+}
+
+
+
+
 // System libraries handling:
 
 

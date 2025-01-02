@@ -1,6 +1,9 @@
 
 int myFunc()
-	
+	if true
+		return 3
+	]
+	return 3
 ]
 
 /*

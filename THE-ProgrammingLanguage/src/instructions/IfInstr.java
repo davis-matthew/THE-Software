@@ -8,10 +8,10 @@ public class IfInstr extends Instruction {
 	
 	// The end of an If may be an ElseIf, an Else, or an EndBlock.
 	// The end instruction associated with this beginning instruction.
-	public Instruction endOfBlockInstr = null;
+	public EndBlockInstr endOfBlockInstr = null;
 	
 	// The else-block of this if-else chain, if present.
-	public Instruction elseInstr = null;
+	public ElseInstr elseInstr = null;
 	
 	// The condition that triggers the if-statement
 	public Instruction conditionInstr;
