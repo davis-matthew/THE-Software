@@ -44,7 +44,7 @@ import instructions.StartBlockInstr;
 import instructions.StoreInstr;
 import instructions.SubInstr;
 import instructions.ToStringInstr;
-import passes.CheckReturnPathsPass;
+import passes.ReturnPathsAndDeadCodePass;
 
 import static parsing.ErrorHandler.*;
 
@@ -110,6 +110,7 @@ public class CompilePass {
 			if (mainFuncDefInstr.functionThatWasDefined.name.equals("main")) {
 				EndBlockInstr mainEnd = new EndBlockInstr(lastParent, "end main");
 				mainFuncDefInstr.endInstr = mainEnd;
+				mainEnd.originalLineNumber = currentParsingLineNumber;
 				instructions.add(mainEnd);
 				lastInstruction = mainEnd;
 			}
@@ -128,8 +129,8 @@ public class CompilePass {
 		// We are done performing line-by-line parsing.
 		currentParsingLineNumber = -1;
 		
-		// TODO verify that all paths through a function return the proper type
-		CheckReturnPathsPass.checkReturnPaths(instructions);
+		// Verify that all paths through a function return the proper type
+		ReturnPathsAndDeadCodePass.checkReturnPaths(instructions);
 		
 		return instructions;
 	}
@@ -154,15 +155,18 @@ public class CompilePass {
 			
 			if (line.equals("break")) {
 				BreakInstr instr = new BreakInstr(parentInstruction, "break", parentLoop);
+				instr.originalLineNumber = currentParsingLineNumber;
 				instructions.add(instr);
 			} else {
 				ContinueInstr instr = new ContinueInstr(parentInstruction, "continue", parentLoop);
+				instr.originalLineNumber = currentParsingLineNumber;
 				instructions.add(instr);
 			}
 			
 		} else if (line.equals("[")) { // Start a deeper scope
 			
 			StartBlockInstr startBlockInstr = new StartBlockInstr(parentInstruction, "scope start");
+			startBlockInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(startBlockInstr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "return")) { // Return
@@ -207,12 +211,14 @@ public class CompilePass {
 			}
 			
 			ReturnInstr returnInstr = new ReturnInstr(parentInstruction, line.trim(), lastInstruction);
+			returnInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(returnInstr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "for")) { // For-loop
 			
 			// This instruction restricts the scope of the whole for-loop and initialization
 			StartBlockInstr startBlockInstr = new StartBlockInstr(parentInstruction, "for-loop scope start");
+			startBlockInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(startBlockInstr);
 			
 			// Get the contents of the for-loop header
@@ -339,6 +345,7 @@ public class CompilePass {
 			// Create the looping construct.
 			// This instruction precedes all content of the loop that is repeated.
 			LoopInstr loopStartLabel = new LoopInstr(startBlockInstr, "for-loop start", false);
+			loopStartLabel.originalLineNumber = currentParsingLineNumber;
 			instructions.add(loopStartLabel);
 			
 			// Create the loop break condition.
@@ -354,9 +361,11 @@ public class CompilePass {
 			IfInstr lastInstructionFromIfCondition = (IfInstr)lastInstructionFromIfConditionAny;
 			
 			BreakInstr boundBreak = new BreakInstr(lastInstructionFromIfCondition, "break for", loopStartLabel);
+			boundBreak.originalLineNumber = currentParsingLineNumber;
 			instructions.add(boundBreak);
 			
 			EndBlockInstr ifBoundEnd = new EndBlockInstr(lastInstructionFromIfCondition, "end if");
+			ifBoundEnd.originalLineNumber = currentParsingLineNumber;
 			instructions.add(ifBoundEnd);
 			
 			lastInstructionFromIfCondition.endOfBlockInstr = ifBoundEnd;
@@ -367,12 +376,14 @@ public class CompilePass {
 			}
 			
 			// This code will be injected when the end-of-block is reached.
-			loopStartLabel.codeToInjectAtEndOfBlock = incrementString;
+			loopStartLabel.codeToInjectBeforeEndOfBlock = incrementString;
+			loopStartLabel.codeToInjectAfterEndOfBlock = "]"; // Close the "StartBlock" instruction
 			
 		} else if (line.equals("do")) { // Do-while loop (header part)
 			
 			// Create the loop header instruction (generic for all loops)
 			LoopInstr instr = new LoopInstr(parentInstruction, "do loop start", true);
+			instr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(instr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "] while")) { // Do-while loop (end part)
@@ -399,18 +410,22 @@ public class CompilePass {
 			
 			// Invert the truth of the last instruction in the break condition
 			BoolNotInstr notInstr = new BoolNotInstr(doStartInstruction, "!(" + expressionContent + ")", lastInstruction);
+			notInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
 			IfInstr ifInstr = new IfInstr(doStartInstruction, "if " + notInstr.debugString, notInstr, false);
+			ifInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
 			BreakInstr breakInstr = new BreakInstr(ifInstr, "break", doStartInstruction);
+			breakInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(breakInstr);
 			
 			// Create the EndBlock for this If-block
 			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
+			endIf.originalLineNumber = currentParsingLineNumber;
 			instructions.add(endIf);
 			
 			ifInstr.endOfBlockInstr = endIf;
@@ -422,6 +437,7 @@ public class CompilePass {
 			}
 			
 			EndBlockInstr doEndInstr = new EndBlockInstr(doStartInstruction, "end do-while");
+			doEndInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(doEndInstr);
 			
 			// Mark this as the end of the Loop instruction
@@ -430,6 +446,7 @@ public class CompilePass {
 		} else if (ParseUtil.doesLineStartWith(line, "while")) { // While loop
 			
 			LoopInstr loopStartLabel = new LoopInstr(parentInstruction, "while loop start", false);
+			loopStartLabel.originalLineNumber = currentParsingLineNumber;
 			instructions.add(loopStartLabel);
 			
 			// Get the contents of the conditional
@@ -456,18 +473,22 @@ public class CompilePass {
 			
 			// Invert the truth of the last instruction in the break condition
 			BoolNotInstr notInstr = new BoolNotInstr(loopStartLabel, "!(" + expressionContent + ")", lastInstruction);
+			notInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(notInstr);
 			
 			// Build the if-statement for the while loop
 			IfInstr ifInstr = new IfInstr(loopStartLabel, "if !(" + expressionContent + ")", notInstr, false);
+			ifInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(ifInstr);
 			
 			// Create a break statement for this while loop
 			BreakInstr breakInstr = new BreakInstr(ifInstr, "break while", loopStartLabel);
+			breakInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(breakInstr);
 			
 			// Create the EndBlock for this If-block
 			EndBlockInstr endIf = new EndBlockInstr(ifInstr, "end if");
+			endIf.originalLineNumber = currentParsingLineNumber;
 			instructions.add(endIf);
 			
 			ifInstr.endOfBlockInstr = endIf;
@@ -492,6 +513,7 @@ public class CompilePass {
 			}
 			
 			IfInstr ifInstr = new IfInstr(parentInstruction, expressionContent, lastInstruction, false);
+			ifInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(ifInstr);
 			
 		} else if (ParseUtil.doesLineStartWith(line, "elseif")) { // ElseIf-statement
@@ -502,9 +524,11 @@ public class CompilePass {
 			
 			// Inject an end-block to close the if-statement first if this is an else-if statement.
 			EndBlockInstr previousEndInstr = new EndBlockInstr(parentInstruction, "end " + parentInstruction.name());
+			previousEndInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(previousEndInstr);
 			
 			ElseInstr elseInstr = new ElseInstr(parentInstruction.parentInstruction, "", (IfInstr)parentInstruction);
+			elseInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(elseInstr);
 			
 			// Get the contents of the conditional
@@ -525,6 +549,7 @@ public class CompilePass {
 			}
 			
 			IfInstr ifInstr = new IfInstr(elseInstr, "elseif " + expressionContent, lastInstruction, true);
+			ifInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(ifInstr);
 			
 			// Mark the end of the previous chaining instruction and
@@ -542,10 +567,12 @@ public class CompilePass {
 			// Create the EndBlock to end of the previous chained instruction
 			EndBlockInstr previousEndInstr = new EndBlockInstr(
 					ifInstr, "end " + ifInstr.name());
+			previousEndInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(previousEndInstr);
 			
 			// Create the Else block
 			ElseInstr elseInstr = new ElseInstr(parentInstruction.parentInstruction, "else", ifInstr);
+			elseInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(elseInstr);
 			
 			// Mark the end of the previous chaining instruction and
@@ -553,7 +580,7 @@ public class CompilePass {
 			ifInstr.endOfBlockInstr = previousEndInstr;
 			ifInstr.elseInstr = elseInstr;
 		
-		} else if (line.equals("]")) { // Descope (for closing a loop, if, elseif, etc.)
+		} else if (line.equals("]")) { // EndBlock (for closing a loop, if, elseif, etc.)
 			
 			// Find the instruction that starts this scope-block
 			Instruction openingBlockInstr = parentInstruction;
@@ -565,15 +592,20 @@ public class CompilePass {
 				if (loopInstr.wasThisADoWhileLoop) {
 					printError("Do-While must be closed with 'while <condition>'.");
 				}
-			
+				
 				// If the opening block has some code that needs to be injected before the closing block,
 				// then parse and add it here.
-				if (loopInstr.codeToInjectAtEndOfBlock != null) {
-					// Parse the line that increments the loop variable
-					parseLine(loopInstr.codeToInjectAtEndOfBlock);
+				if (loopInstr.codeToInjectBeforeEndOfBlock != null) {
 					
-					// No longer needed.
-					loopInstr.codeToInjectAtEndOfBlock = null;
+					String[] lines = loopInstr.codeToInjectBeforeEndOfBlock.split("\n");
+					
+					// Prevent this from being parsed multiple lines
+					loopInstr.codeToInjectBeforeEndOfBlock = null;
+
+					// Parse the line that increments the loop variable
+					for (int i = 0; i < lines.length; i++) {
+						parseLine(lines[i]);
+					}
 				}
 			}
 			
@@ -581,13 +613,31 @@ public class CompilePass {
 				printError("Extra ']' in program");
 			}
 			
-			// Create the EndBlock to end this else-statement
+			// Create the EndBlock
 			EndBlockInstr endInstr = new EndBlockInstr(openingBlockInstr, "end " + openingBlockInstr.debugString);
+			endInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(endInstr);
 			
-			// Mark a reference to the end of the loop
 			if (openingBlockInstr instanceof LoopInstr) {
-				((LoopInstr)openingBlockInstr).endInstr = endInstr;
+				LoopInstr loopInstr = (LoopInstr)openingBlockInstr;
+
+				// Mark a reference to the end of the loop
+				loopInstr.endInstr = endInstr;
+				
+				// If the opening block has some code that needs to be injected after the closing block,
+				// then parse and add it here.
+				if (loopInstr.codeToInjectAfterEndOfBlock != null) {
+					
+					String[] lines = loopInstr.codeToInjectAfterEndOfBlock.split("\n");
+					
+					// Prevent this from being parsed multiple lines
+					loopInstr.codeToInjectAfterEndOfBlock = null;
+
+					// Parse the line that increments the loop variable
+					for (int i = 0; i < lines.length; i++) {
+						parseLine(lines[i]);
+					}
+				}
 			}
 			if (openingBlockInstr instanceof IfInstr) {
 				IfInstr ifInstr = (IfInstr)openingBlockInstr;
@@ -682,6 +732,7 @@ public class CompilePass {
 					if (mainFuncDefInstr.functionThatWasDefined.name.equals("main")) {
 						EndBlockInstr mainEnd = new EndBlockInstr(parentInstruction, "end main");
 						mainFuncDefInstr.endInstr = mainEnd;
+						mainEnd.originalLineNumber = currentParsingLineNumber;
 						instructions.add(mainEnd);
 					}
 				}
@@ -690,7 +741,7 @@ public class CompilePass {
 				// TODO add multiple returns.
 				FunctionDefInstr funcDefInstr = new FunctionDefInstr(null, line, function);
 				function.functionDefInstr = funcDefInstr;
-				funcDefInstr.originalLineNumber = currentParsingLineNumber; // TODO need to put these everywhere
+				funcDefInstr.originalLineNumber = currentParsingLineNumber;
 				instructions.add(funcDefInstr);
 				
 				// TODO study LLVM to figure out how to pass arguments into the function
@@ -721,6 +772,7 @@ public class CompilePass {
 					ParseUtil.checkForExcessCharacters(line, varName);
 					
 					AllocVarInstr instr = new AllocVarInstr(parentInstruction, varType + " " + varName, varType, varName);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 					
 				} else if (operator.equals("=")) { // If this is an allocation and assignment
@@ -735,10 +787,12 @@ public class CompilePass {
 					}
 					
 					AllocVarInstr declareInstr = new AllocVarInstr(parentInstruction, varType + " " + varName, varType, varName);
+					declareInstr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(declareInstr);
 					
 					StoreInstr storeInstr = new StoreInstr(parentInstruction,
 							varName + " = " + expressionContent, declareInstr, lastInstruction);
+					storeInstr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(storeInstr);
 				} else {
 					printError("Invalid assignment operator");
@@ -815,6 +869,7 @@ public class CompilePass {
 				// Write to the pointer
 				StoreInstr assignment = new StoreInstr(parentInstruction,
 						line, instrThatDeclaredVar, lastInstructionFromRightHand);
+				assignment.originalLineNumber = currentParsingLineNumber;
 				instructions.add(assignment);
 				
 			} else { // This was a compound or shorthand assignment (like i++ or i*=2)
@@ -842,14 +897,17 @@ public class CompilePass {
 					}
 					
 					GivenInstr one = new GivenInstr(parentInstruction, "1", 1, Type.Int);
+					one.originalLineNumber = currentParsingLineNumber;
 					instructions.add(one);
 					
 					Instruction addOrSubtract;
 					if (assignmentOp.equals("++")) {
 						addOrSubtract = new AddInstr(parentInstruction, leftHandString + " + 1", loadInstr, one);
+						addOrSubtract.originalLineNumber = currentParsingLineNumber;
 						instructions.add(addOrSubtract);
 					} else if (assignmentOp.equals("--")) {
 						addOrSubtract = new SubInstr(parentInstruction, leftHandString + " + 1", loadInstr, one);
+						addOrSubtract.originalLineNumber = currentParsingLineNumber;
 						instructions.add(addOrSubtract);
 					} else {
 						new Exception("Invalid operator: " + assignmentOp).printStackTrace();
@@ -859,6 +917,7 @@ public class CompilePass {
 					// Write to the pointer
 					StoreInstr writeToFirstHalf = new StoreInstr(parentInstruction,
 							leftHandString + " = " + addOrSubtract.debugString, instrThatDeclaredVar, addOrSubtract);
+					writeToFirstHalf.originalLineNumber = currentParsingLineNumber;
 					instructions.add(writeToFirstHalf);
 					
 				} else if (assignmentOp.equals("+=")  || assignmentOp.equals("-=") || // If this is a shorthand operator
@@ -896,11 +955,13 @@ public class CompilePass {
 						printError("Invalid operator: " + assignmentOp);
 						return null;
 					}
+					binaryOp.originalLineNumber = currentParsingLineNumber;
 					instructions.add(binaryOp);
 					
 					// Write to the pointer
 					StoreInstr writeToFirstHalf = new StoreInstr(parentInstruction,
 							leftHandString, instrThatDeclaredVar, binaryOp);
+					writeToFirstHalf.originalLineNumber = currentParsingLineNumber;
 					instructions.add(writeToFirstHalf);
 					
 				} else {
@@ -1009,6 +1070,7 @@ public class CompilePass {
 				new Exception("Invalid binary operator: " + binaryOpStr).printStackTrace();
 				return null;
 			}
+			instr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(instr);
 			
 		} else { // There are no more binary operators in this expression
@@ -1042,27 +1104,34 @@ public class CompilePass {
 					new Exception("Invalid binary operator: " + opChar).printStackTrace();
 					return null;
 				}
+				instr.originalLineNumber = currentParsingLineNumber;
 				instructions.add(instr);
 			} else {
 				
 				// If this is a literal
 				if (ParseUtil.isSignedInteger(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseInt(text), Type.Int);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isSignedLong(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseLong(text), Type.Long);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isDouble(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseDouble(text), Type.Double);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isFloat(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseFloat(text), Type.Float);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isBool(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, ParseUtil.parseBool(text), Type.Bool);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isString(text)) {
 					GivenInstr instr = new GivenInstr(parentInstruction, text, text, Type.String);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 				} else if (ParseUtil.isArrayDefinition(text)) {
 					
@@ -1088,6 +1157,7 @@ public class CompilePass {
 					}
 					
 					AllocArrInstr instr = new AllocArrInstr(parentInstruction, text, arrayElementType, args);
+					instr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(instr);
 					
 				} else if (ParseUtil.isArrayElementAccess(text)) {
@@ -1139,10 +1209,12 @@ public class CompilePass {
 					
 					// Get the address of the element
 					GetElementInstr getElementInstr = new GetElementInstr(parentInstruction, text, instrThatDeclaredVar, args);
+					getElementInstr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(getElementInstr);
 					
 					// Read from the element itself
 					LoadInstr loadInstr = new LoadInstr(parentInstruction, text, getElementInstr);
+					loadInstr.originalLineNumber = currentParsingLineNumber;
 					instructions.add(loadInstr);
 					
 				} else if (text.indexOf('(') != -1 && text.indexOf(')') != -1) { // Function call
@@ -1171,6 +1243,7 @@ public class CompilePass {
 					// If it is an array
 					if (varType.isArray) {
 						IdentityInstr instr = new IdentityInstr(parentInstruction, text, instrThatDeclaredVar);
+						instr.originalLineNumber = currentParsingLineNumber;
 						instructions.add(instr);
 						
 					} else { // If this is a primitive type
@@ -1182,6 +1255,7 @@ public class CompilePass {
 						}
 						
 						LoadInstr instr = new LoadInstr(parentInstruction, text, instrThatDeclaredVar);
+						instr.originalLineNumber = currentParsingLineNumber;
 						instructions.add(instr);
 					}
 				}
@@ -1228,9 +1302,11 @@ public class CompilePass {
 			
 			// First convert the argument to a string
 			ToStringInstr toStringInstr = new ToStringInstr(parentInstruction, argStrings[0], lastInstruction);
+			toStringInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(toStringInstr);
 			
 			PrintInstr instr = new PrintInstr(parentInstruction, argStrings[0], toStringInstr);
+			instr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(instr);
 			
 		} else { // Some user-defined function
@@ -1256,6 +1332,7 @@ public class CompilePass {
 			
 			// Create the function Call instruction
 			FunctionCallInstr callInstr = new FunctionCallInstr(parentInstruction, text, func, args);
+			callInstr.originalLineNumber = currentParsingLineNumber;
 			instructions.add(callInstr);
 		}
 	}

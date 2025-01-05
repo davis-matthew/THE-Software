@@ -7,7 +7,7 @@ import static parsing.ErrorHandler.printError;
 
 // This class checks that functions with returns have return statements on all paths
 
-public class CheckReturnPathsPass {
+public class ReturnPathsAndDeadCodePass {
 	
 	private static int stackHead = -1;
 	private static int[] instructionStack = new int[1024];
@@ -32,7 +32,8 @@ public class CheckReturnPathsPass {
 		}
 	}
 	
-	// TODO mark all reached instructions as "checked" here. If any remain unchecked, then we have dead code.
+	// Check all paths through the code to make sure they all end at a return.
+	// At the end, check if any code wasn't covered and throw a "dead code" error if so.
 	private static void checkAllPaths(ArrayList<Instruction> instructions, 
 			FunctionDefInstr funcDefInstr, int start) {
 		
@@ -156,7 +157,7 @@ public class CheckReturnPathsPass {
 					!(instr instanceof EndBlockInstr)&&
 					!(instr instanceof ElseInstr)) {
 					
-					printError("Dead code at " + instr, instr.originalLineNumber);
+					printError("Dead code", instr.originalLineNumber);
 				}
 			}
 		}

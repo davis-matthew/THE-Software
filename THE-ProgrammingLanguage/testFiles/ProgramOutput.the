@@ -1,13 +1,30 @@
 0   FunctionDef() [main] Parent=-1 'int main()' Line 285
-1   | EndBlock Parent=0 'end main' Line -999
+1   | EndBlock Parent=0 'end main' Line 2
 2   FunctionDef()->int [myFunc] Parent=-1 'int myFunc()' Line 2
-3   | Given->int [2] Parent=2 '2' Line -999
-4   | Given->int [4] Parent=2 '4' Line -999
-5   | Equal(int 3, int 4)->bool Parent=2 '2 = 4' Line -999
-6   | If(bool 5) End=9 Parent=2 '2 = 4' Line -999
-7   | | Given->int [1] Parent=6 '1' Line -999
-8   | | Return Parent=6 'return 1' Line -999
-9   | | EndBlock Parent=6 'end 2 = 4' Line -999
-10  | Given->int [5] Parent=2 '5' Line -999
-11  | Return Parent=2 'return 5' Line -999
-12  | EndBlock Parent=2 'end int myFunc()' Line -999
+3   | StartBlock Parent=2 'for-loop scope start' Line 3
+4   | | Given->int [0] Parent=3 '0' Line 3
+5   | | AllocVar->int* Parent=3 'int i' (i declared) Line 3
+6   | | Store(int* 5, int 4) Parent=3 'i = 0' Line 3
+7   | | Loop Parent=3 'for-loop start' Line 3
+8   | | | Load(int* 5)->int Parent=7 'i' Line 3
+9   | | | Given->int [5] Parent=7 '5' Line 3
+10  | | | GreaterEqual(int 8, int 9)->bool Parent=7 'i >= (5)' Line 3
+11  | | | Load(int* 5)->int Parent=7 'i' Line 3
+12  | | | Given->int [0] Parent=7 '0' Line 3
+13  | | | Less(int 11, int 12)->bool Parent=7 'i < (0)' Line 3
+14  | | | BoolOr(bool 10, bool 13)->bool Parent=7 '(i >= (5)) || (i < (0))' Line 3
+15  | | | If(bool 14) End=17 Parent=7 '(i >= (5)) || (i < (0))' Line 3
+16  | | | | Break Parent=15 'break for' Line 3
+17  | | | | EndBlock Parent=15 'end if' Line 3
+18  | | | Given->string ["HI"] Parent=7 '"HI"' Line 4
+19  | | | ToString(string 18)->string Parent=7 '"HI"' Line 4
+20  | | | Print(string 19) Parent=7 '"HI"' Line 4
+21  | | | Load(int* 5)->int Parent=7 'i' Line 5
+22  | | | Given->int [1] Parent=7 '1' Line 5
+23  | | | Add(int 21, int 22)->int Parent=7 'i + 1' Line 5
+24  | | | Store(int* 5, int 23) Parent=7 'i = i + 1' Line 5
+25  | | | EndBlock Parent=7 'end for-loop start' Line 5
+26  | | EndBlock Parent=3 'end for-loop scope start' Line 5
+27  | Given->int [5] Parent=2 '5' Line 6
+28  | Return Parent=2 'return 5' Line 6
+29  | EndBlock Parent=2 'end int myFunc()' Line 7
