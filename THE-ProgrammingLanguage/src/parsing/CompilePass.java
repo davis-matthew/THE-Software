@@ -106,8 +106,10 @@ public class CompilePass {
 		
 		// If we are at the end of the main function, then add a closing bracket
 		if (lastParent instanceof FunctionDefInstr) {
-			if (((FunctionDefInstr)lastParent).functionThatWasDefined.name.equals("main")) {
+			FunctionDefInstr mainFuncDefInstr = (FunctionDefInstr)lastParent;
+			if (mainFuncDefInstr.functionThatWasDefined.name.equals("main")) {
 				EndBlockInstr mainEnd = new EndBlockInstr(lastParent, "end main");
+				mainFuncDefInstr.endInstr = mainEnd;
 				instructions.add(mainEnd);
 				lastInstruction = mainEnd;
 			}
@@ -607,6 +609,9 @@ public class CompilePass {
 					parseLine("]");
 				}
 			}
+			if (openingBlockInstr instanceof FunctionDefInstr) {
+				((FunctionDefInstr)openingBlockInstr).endInstr = endInstr;
+			}
 			
 		} else if (ParseUtil.getFirstDataType(line) != null) { // If this is a declaration of some sort
 			
@@ -673,8 +678,10 @@ public class CompilePass {
 				
 				// If we are inside the main function, then manually inject an end-block
 				if (parentInstruction instanceof FunctionDefInstr) {
-					if (((FunctionDefInstr)parentInstruction).functionThatWasDefined.name.equals("main")) {
+					FunctionDefInstr mainFuncDefInstr = (FunctionDefInstr)parentInstruction;
+					if (mainFuncDefInstr.functionThatWasDefined.name.equals("main")) {
 						EndBlockInstr mainEnd = new EndBlockInstr(parentInstruction, "end main");
+						mainFuncDefInstr.endInstr = mainEnd;
 						instructions.add(mainEnd);
 					}
 				}

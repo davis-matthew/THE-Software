@@ -15,7 +15,7 @@ public abstract class Instruction {
 	public final int id;
 	
 	// The original line number that this instruction was created from.
-	public int originalLineNumber;
+	public int originalLineNumber = -999;
 	
 	// A string representation of what this instruction applies to (for debug only)
 	public String debugString;
@@ -295,9 +295,10 @@ public abstract class Instruction {
 		if (this instanceof ArrLengthInstr) {
 			ArrLengthInstr instr = (ArrLengthInstr)this;
 			if (instr.getElementCount) {
-				s += " [all elements]";
+				s += " (all elements)";
 			}
 		}
+		s += " Line " + originalLineNumber;
 		
 		return s;
 	}

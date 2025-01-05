@@ -4,7 +4,7 @@ import parsing.Function;
 
 public class FunctionDefInstr extends Instruction {
 
-	public EndBlockInstr endBlockInstr; // Reference to the end of the function
+	public EndBlockInstr endInstr; // Reference to the end of the function
 	
 	public Function functionThatWasDefined; // Reference to the function that was declared
 	
@@ -15,7 +15,7 @@ public class FunctionDefInstr extends Instruction {
 	
 	public Instruction[] getAllArgs() {
 		return new Instruction[] {
-				endBlockInstr
+				endInstr
 		};
 	}
 	
